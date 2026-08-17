@@ -8,7 +8,6 @@ const STORAGE_UPDATE_KEY = "macacoes_ultima_atualizacao";
 
 export default function App() {
   const [history, setHistory] = useState([]);
-  const [filtroDataFinal, setFiltroDataFinal] = useState("");
   const [items, setItems] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -34,7 +33,7 @@ export default function App() {
   });
 
   /* =========================================================
-     CARREGAMENTO INICIAL
+     CARREGAMENTO
   ========================================================= */
 
   useEffect(() => {
@@ -52,7 +51,7 @@ export default function App() {
   }, []);
 
   /* =========================================================
-     SALVAMENTO AUTOMÁTICO + ÚLTIMA ATUALIZAÇÃO
+     SALVAMENTO AUTOMÁTICO
   ========================================================= */
 
   useEffect(() => {
@@ -67,7 +66,189 @@ export default function App() {
   }, [items, loaded]);
 
   /* =========================================================
-     FORMATAR DATA/HORA
+     DATAS
+     
+     O USUÁRIO SEMPRE VÊ:
+     DD/MM/AAAA
+     
+     O SISTEMA PODE CONTINUAR TENDO:
+     YYYY-MM-DD
+     
+     Isso mantém compatibilidade com dados antigos.
+  ========================================================= */
+
+  const formatarData = (data) => {
+    if (!data) return "";
+
+    const valor = String(data).trim();
+
+    // DD/MM/AAAA
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(valor)) {
+      return valor;
+    }
+
+    // DD-MM-AAAA
+    if (/^\d{2}-\d{2}-\d{4}$/.test(valor)) {
+      const [dia, mes, ano] = valor.split("-");
+      return `${dia}/${mes}/${ano}`;
+    }
+
+    // AAAA-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+      const [ano, mes, dia] = valor.split("-");
+      return `${dia}/${mes}/${ano}`;
+    }
+
+    // AAAA/MM/DD
+    if (/^\d{4}\/\d{2}\/\d{2}$/.test(valor)) {
+      const [ano, mes, dia] = valor.split("/");
+      return `${dia}/${mes}/${ano}`;
+    }
+
+    const dataConvertida = new Date(valor);
+
+    if (!Number.isNaN(dataConvertida.getTime())) {
+      const dia = String(dataConvertida.getDate()).padStart(2, "0");
+      const mes = String(dataConvertida.getMonth() + 1).padStart(2, "0");
+      const ano = dataConvertida.getFullYear();
+
+      return `${dia}/${mes}/${ano}`;
+    }
+
+    return valor;
+  };
+
+  /*
+   * Converte DD/MM/AAAA para AAAA-MM-DD.
+   *
+   * Isso é usado apenas internamente para manter
+   * compatibilidade com os dados existentes.
+   */
+  const dataParaInterno = (data) => {
+    if (!data) return "";
+
+    const valor = String(data).trim();
+
+    // DD/MM/AAAA
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(valor)) {
+      const [dia, mes, ano] = valor.split("/");
+      return `${ano}-${mes}-${dia}`;
+    }
+
+    // DD-MM-AAAA
+    if (/^\d{2}-\d{2}-\d{4}$/.test(valor)) {
+      const [dia, mes, ano] = valor.split("-");
+      return `${ano}-${mes}-${dia}`;
+    }
+
+    // Já está no formato interno
+    if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+      return valor;
+    }
+
+    return valor;
+  };
+
+  /*
+   * Máscara do campo de data.
+   *
+   * Exemplo:
+   * 1        -> 1
+   * 17       -> 17/
+   * 1708     -> 17/08/
+   * 17082026 -> 17/08/2026
+   */
+  const formatarInputData = (valor) => {
+    const numeros = String(valor || "")
+      .replace(/\D/g, "")
+      .slice(0, 8);
+
+    if (numeros.length <= 2) {
+      return numeros;
+    }
+
+    if (numeros.length <= 4) {
+      return `${numeros.slice(0, 2)}/${numeros.slice(2)}`;
+    }
+
+    return `${numeros.slice(0, 2)}/${numeros.slice(
+      2,
+      4
+    )}/${numeros.slice(4, 8)}`;
+  };
+
+  /*
+   * Verifica se a data digitada realmente existe.
+   */
+  const dataValida = (data) => {
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(data)) {
+      return false;
+    }
+
+    const [dia, mes, ano] = data.split("/").map(Number);
+
+    if (mes < 1 || mes > 12) return false;
+    if (dia < 1 || dia > 31) return false;
+    if (ano < 1900 || ano > 3000) return false;
+
+    const d = new Date(ano, mes - 1, dia);
+
+    return (
+      d.getFullYear() === ano &&
+      d.getMonth() === mes - 1 &&
+      d.getDate() === dia
+    );
+  };
+
+  /*
+   * Timestamp para ordenação.
+   */
+  const obterTimestampData = (data) => {
+    if (!data) return Number.MAX_SAFE_INTEGER;
+
+    const valor = String(data).trim();
+
+    let ano;
+    let mes;
+    let dia;
+
+    // AAAA-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+      [ano, mes, dia] = valor.split("-").map(Number);
+    }
+
+    // DD/MM/AAAA
+    else if (/^\d{2}\/\d{2}\/\d{4}$/.test(valor)) {
+      [dia, mes, ano] = valor.split("/").map(Number);
+    }
+
+    // DD-MM-AAAA
+    else if (/^\d{2}-\d{2}-\d{4}$/.test(valor)) {
+      [dia, mes, ano] = valor.split("-").map(Number);
+    }
+
+    // AAAA/MM/DD
+    else if (/^\d{4}\/\d{2}\/\d{2}$/.test(valor)) {
+      [ano, mes, dia] = valor.split("/").map(Number);
+    }
+
+    else {
+      const d = new Date(valor);
+
+      return Number.isNaN(d.getTime())
+        ? Number.MAX_SAFE_INTEGER
+        : d.getTime();
+    }
+
+    const d = new Date(ano, mes - 1, dia);
+
+    return Number.isNaN(d.getTime())
+      ? Number.MAX_SAFE_INTEGER
+      : d.getTime();
+  };
+
+  /* =========================================================
+     DATA/HORA DA ÚLTIMA ATUALIZAÇÃO
   ========================================================= */
 
   const formatarUltimaAtualizacao = () => {
@@ -81,9 +262,64 @@ export default function App() {
       return "Nenhuma alteração registrada";
     }
 
-    return data.toLocaleString("pt-BR", {
-      dateStyle: "short",
-      timeStyle: "medium",
+    return formatarDataHoraPDF(data);
+  };
+
+  /* =========================================================
+     NÚMERO PARA ORDENAÇÃO
+  ========================================================= */
+
+  const obterNumeroOrdenacao = (numero) => {
+    if (numero === undefined || numero === null) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    const texto = String(numero).trim();
+
+    if (!texto) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    const match = texto.match(/\d+/);
+
+    if (!match) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    const numeroConvertido = Number(match[0]);
+
+    return Number.isNaN(numeroConvertido)
+      ? Number.MAX_SAFE_INTEGER
+      : numeroConvertido;
+  };
+
+  /* =========================================================
+     ORDENAR
+  ========================================================= */
+
+  const ordenarItens = (lista) => {
+    return [...lista].sort((a, b) => {
+      const numeroA = obterNumeroOrdenacao(a.numero);
+      const numeroB = obterNumeroOrdenacao(b.numero);
+
+      if (numeroA !== numeroB) {
+        return numeroA - numeroB;
+      }
+
+      const dataA = obterTimestampData(a.data);
+      const dataB = obterTimestampData(b.data);
+
+      if (dataA !== dataB) {
+        return dataA - dataB;
+      }
+
+      const codigoA = String(a.codigo || "").toLowerCase();
+      const codigoB = String(b.codigo || "").toLowerCase();
+
+      return codigoA.localeCompare(codigoB, "pt-BR", {
+        numeric: true,
+        sensitivity: "base",
+      });
     });
   };
 
@@ -94,7 +330,8 @@ export default function App() {
   const beep = () => {
     try {
       const ctx = new (
-        window.AudioContext || window.webkitAudioContext
+        window.AudioContext ||
+        window.webkitAudioContext
       )();
 
       const o = ctx.createOscillator();
@@ -117,7 +354,7 @@ export default function App() {
   };
 
   /* =========================================================
-     HISTÓRICO / DESFAZER
+     HISTÓRICO
   ========================================================= */
 
   const salvarHistorico = (listaAtual) => {
@@ -133,11 +370,12 @@ export default function App() {
     const ultima = history[history.length - 1];
 
     setItems(ultima);
+
     setHistory((prev) => prev.slice(0, -1));
   };
 
   /* =========================================================
-     EXPORT JSON
+     EXPORTAR JSON
   ========================================================= */
 
   const exportJSON = () => {
@@ -153,14 +391,13 @@ export default function App() {
 
     a.href = url;
     a.download = "dados.json";
-
     a.click();
 
     URL.revokeObjectURL(url);
   };
 
   /* =========================================================
-     IMPORT JSON
+     IMPORTAR JSON
   ========================================================= */
 
   const importJSON = (e) => {
@@ -195,7 +432,9 @@ export default function App() {
   ========================================================= */
 
   const handleNotFound = (code) => {
-    const ok = confirm("Item não existe. Deseja adicionar?");
+    const ok = confirm(
+      "Item não existe. Deseja adicionar?"
+    );
 
     if (!ok) return;
 
@@ -216,8 +455,8 @@ export default function App() {
 
     const found = items.find(
       (i) =>
-        String(i.codigo || "").toLowerCase() ===
-        codigo.toLowerCase()
+        String(i.codigo || "")
+          .toLowerCase() === codigo.toLowerCase()
     );
 
     if (found) {
@@ -225,8 +464,7 @@ export default function App() {
 
       setSearch(codigo);
       setTab("todos");
-
-      salvarHistorico(items);
+      setOpenItem(found.id);
 
       setScanning(false);
       return;
@@ -238,11 +476,6 @@ export default function App() {
 
   /* =========================================================
      PESQUISA
-     Agora pesquisa:
-     - Código
-     - Nome
-     - Número
-     - Tamanho
   ========================================================= */
 
   const handleSearchKey = (e) => {
@@ -294,10 +527,19 @@ export default function App() {
       return;
     }
 
+    // Se houver data, valida o formato DD/MM/AAAA.
+    if (form.data && !dataValida(form.data)) {
+      alert(
+        "Digite uma data válida no formato DD/MM/AAAA."
+      );
+      return;
+    }
+
     const jaExiste = items.some(
       (i) =>
-        String(i.codigo || "").trim().toLowerCase() ===
-          codigoLimpo.toLowerCase() &&
+        String(i.codigo || "")
+          .trim()
+          .toLowerCase() === codigoLimpo.toLowerCase() &&
         i.id !== editingId
     );
 
@@ -308,14 +550,27 @@ export default function App() {
 
     salvarHistorico(items);
 
+    /*
+     * Salva a data internamente como YYYY-MM-DD.
+     * Assim, dados antigos e novos ficam compatíveis.
+     */
+    const formParaSalvar = {
+      ...form,
+      codigo: codigoLimpo,
+      data: dataParaInterno(form.data),
+    };
+
     if (editingId) {
       setItems(
         items.map((i) =>
           i.id === editingId
             ? {
                 ...i,
-                ...form,
-                nome: tab === "uso" ? form.nome : i.nome || "",
+                ...formParaSalvar,
+                nome:
+                  tab === "uso"
+                    ? form.nome
+                    : i.nome || "",
                 codigo: codigoLimpo,
               }
             : i
@@ -327,8 +582,7 @@ export default function App() {
       setItems([
         ...items,
         {
-          ...form,
-          codigo: codigoLimpo,
+          ...formParaSalvar,
           nome: tab === "uso" ? form.nome : "",
           status: tab === "todos" ? "estoque" : tab,
           perdido: tab === "perdidos",
@@ -405,17 +659,14 @@ export default function App() {
         return {
           ...i,
           perdido: false,
-          status: i.lastStatus
-            ? i.lastStatus
-            : "estoque",
+          status: i.lastStatus || "estoque",
         };
       })
     );
   };
 
   /* =========================================================
-     ARMÁRIO / DEVOLVIDO
-     Somente usado em "Em Uso"
+     ARMÁRIO
   ========================================================= */
 
   const toggleArmario = (id) => {
@@ -442,7 +693,7 @@ export default function App() {
       numero: item.numero || "",
       codigo: item.codigo || "",
       tamanho: item.tamanho || "",
-      data: item.data || "",
+      data: formatarData(item.data),
       nome: item.nome || "",
     });
 
@@ -468,7 +719,9 @@ export default function App() {
   ========================================================= */
 
   const removeItem = (id) => {
-    if (!confirm("Excluir item?")) return;
+    if (!confirm("Excluir item?")) {
+      return;
+    }
 
     salvarHistorico(items);
 
@@ -479,45 +732,47 @@ export default function App() {
      FILTRO
   ========================================================= */
 
-  const filtered = items.filter((i) => {
-    const termo = search.trim().toLowerCase();
+  const filtered = ordenarItens(
+    items.filter((i) => {
+      const termo = search.trim().toLowerCase();
 
-    const codigo = String(i.codigo || "").toLowerCase();
-    const nome = String(i.nome || "").toLowerCase();
-    const numero = String(i.numero || "").toLowerCase();
-    const tamanho = String(i.tamanho || "").toLowerCase();
+      const codigo = String(i.codigo || "").toLowerCase();
+      const nome = String(i.nome || "").toLowerCase();
+      const numero = String(i.numero || "").toLowerCase();
+      const tamanho = String(i.tamanho || "").toLowerCase();
 
-    const matchSearch =
-      !termo ||
-      codigo.includes(termo) ||
-      nome.includes(termo) ||
-      numero.includes(termo) ||
-      tamanho.includes(termo);
+      const matchSearch =
+        !termo ||
+        codigo.includes(termo) ||
+        nome.includes(termo) ||
+        numero.includes(termo) ||
+        tamanho.includes(termo);
 
-    if (!matchSearch) return false;
+      if (!matchSearch) return false;
 
-    if (tab === "estoque") {
-      return i.status === "estoque" && !i.perdido;
-    }
+      if (tab === "estoque") {
+        return i.status === "estoque" && !i.perdido;
+      }
 
-    if (tab === "lavagem") {
-      return i.status === "lavagem" && !i.perdido;
-    }
+      if (tab === "lavagem") {
+        return i.status === "lavagem" && !i.perdido;
+      }
 
-    if (tab === "uso") {
-      return i.status === "uso" && !i.perdido;
-    }
+      if (tab === "uso") {
+        return i.status === "uso" && !i.perdido;
+      }
 
-    if (tab === "perdidos") {
-      return i.perdido;
-    }
+      if (tab === "perdidos") {
+        return i.perdido;
+      }
 
-    if (tab === "todos") {
+      if (tab === "todos") {
+        return true;
+      }
+
       return true;
-    }
-
-    return true;
-  });
+    })
+  );
 
   /* =========================================================
      CONTADORES
@@ -542,6 +797,69 @@ export default function App() {
   };
 
   /* =========================================================
+     DATA FINAL DA LAVAGEM
+  ========================================================= */
+
+  const calcularDataFinal = (data) => {
+    if (!data) return "";
+
+    const interna = dataParaInterno(data);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(interna)) {
+      return "";
+    }
+
+    const [ano, mes, dia] = interna
+      .split("-")
+      .map(Number);
+
+    const d = new Date(ano, mes - 1, dia);
+
+    if (Number.isNaN(d.getTime())) {
+      return "";
+    }
+
+    const diaSemana = d.getDay();
+
+    if (diaSemana === 1) {
+      // Segunda -> Sexta
+      d.setDate(d.getDate() + 4);
+    } else if (diaSemana === 3) {
+      // Quarta -> Segunda
+      d.setDate(d.getDate() + 5);
+    } else if (diaSemana === 5) {
+      // Sexta -> Quarta
+      d.setDate(d.getDate() + 5);
+    } else {
+      return "Funciona somente: Seg/Qua/Sex";
+    }
+
+    const novoDia = String(d.getDate()).padStart(2, "0");
+    const novoMes = String(d.getMonth() + 1).padStart(2, "0");
+    const novoAno = d.getFullYear();
+
+    return `${novoDia}/${novoMes}/${novoAno}`;
+  };
+
+  /* =========================================================
+     DATA/HORA PDF
+  ========================================================= */
+
+  const formatarDataHoraPDF = (data) => {
+    if (!data) return "";
+
+    const dia = String(data.getDate()).padStart(2, "0");
+    const mes = String(data.getMonth() + 1).padStart(2, "0");
+    const ano = data.getFullYear();
+
+    const horas = String(data.getHours()).padStart(2, "0");
+    const minutos = String(data.getMinutes()).padStart(2, "0");
+    const segundos = String(data.getSeconds()).padStart(2, "0");
+
+    return `${dia}/${mes}/${ano} ${horas}:${minutos}:${segundos}`;
+  };
+
+  /* =========================================================
      PDF
   ========================================================= */
 
@@ -561,20 +879,26 @@ export default function App() {
             ? String(v)
             : "";
 
-        const estoque = items.filter(
-          (i) => i.status === "estoque" && !i.perdido
+        const estoque = ordenarItens(
+          items.filter(
+            (i) => i.status === "estoque" && !i.perdido
+          )
         );
 
-        const lavagem = items.filter(
-          (i) => i.status === "lavagem" && !i.perdido
+        const lavagem = ordenarItens(
+          items.filter(
+            (i) => i.status === "lavagem" && !i.perdido
+          )
         );
 
-        const uso = items.filter(
-          (i) => i.status === "uso" && !i.perdido
+        const uso = ordenarItens(
+          items.filter(
+            (i) => i.status === "uso" && !i.perdido
+          )
         );
 
-        const perdidos = items.filter(
-          (i) => i.perdido
+        const perdidos = ordenarItens(
+          items.filter((i) => i.perdido)
         );
 
         const drawWatermark = () => {
@@ -603,9 +927,7 @@ export default function App() {
                 opacity: 1,
               })
             );
-          } catch {
-            // Compatibilidade caso GState não esteja disponível
-          }
+          } catch {}
 
           doc.setFontSize(10);
           doc.setTextColor(0, 0, 0);
@@ -615,7 +937,9 @@ export default function App() {
           if (y > 270) {
             drawWatermark();
             doc.addPage();
+
             y = 15;
+
             drawWatermark();
           }
         };
@@ -639,7 +963,7 @@ export default function App() {
 
           if (type === "lavagem") {
             doc.text(
-              "Número / Código / Tamanho / Data",
+              "Número / Código / Tamanho / Data final",
               10,
               y
             );
@@ -667,27 +991,30 @@ export default function App() {
             let linha = "";
 
             if (type === "lavagem") {
-              const dataFinal =
-                calcularDataFinal(i.data);
+              const dataFinal = calcularDataFinal(i.data);
 
-              linha = `${safe(i.numero)} / ${safe(
-                i.codigo
-              )} / ${safe(i.tamanho)} / ${safe(
-                dataFinal
-              )}`;
+              linha =
+                `${safe(i.numero)} / ` +
+                `${safe(i.codigo)} / ` +
+                `${safe(i.tamanho)} / ` +
+                `${safe(dataFinal)}`;
             } else if (type === "uso") {
-              const devolvido =
-                i.devolvidoArmario ? "Sim" : "Não";
+              const devolvido = i.devolvidoArmario
+                ? "Sim"
+                : "Não";
 
-              linha = `${safe(i.numero)} / ${safe(
-                i.codigo
-              )} / ${safe(i.tamanho)} / ${safe(
-                i.data
-              )} / ${safe(i.nome)} / ${devolvido}`;
+              linha =
+                `${safe(i.numero)} / ` +
+                `${safe(i.codigo)} / ` +
+                `${safe(i.tamanho)} / ` +
+                `${safe(formatarData(i.data))} / ` +
+                `${safe(i.nome)} / ` +
+                `${devolvido}`;
             } else {
-              linha = `${safe(i.numero)} / ${safe(
-                i.codigo
-              )} / ${safe(i.tamanho)}`;
+              linha =
+                `${safe(i.numero)} / ` +
+                `${safe(i.codigo)} / ` +
+                `${safe(i.tamanho)}`;
             }
 
             const linhas = doc.splitTextToSize(
@@ -720,8 +1047,8 @@ export default function App() {
         doc.setFont(undefined, "normal");
 
         doc.text(
-          `Gerado em: ${new Date().toLocaleString(
-            "pt-BR"
+          `Gerado em: ${formatarDataHoraPDF(
+            new Date()
           )}`,
           10,
           y
@@ -730,15 +1057,27 @@ export default function App() {
         y += 10;
 
         if (tipoRelatorio === "estoque") {
-          write("ESTOQUE", estoque, "estoque");
+          write(
+            "ESTOQUE",
+            estoque,
+            "estoque"
+          );
         }
 
         if (tipoRelatorio === "lavagem") {
-          write("LAVAGEM", lavagem, "lavagem");
+          write(
+            "LAVAGEM",
+            lavagem,
+            "lavagem"
+          );
         }
 
         if (tipoRelatorio === "uso") {
-          write("EM USO", uso, "uso");
+          write(
+            "EM USO",
+            uso,
+            "uso"
+          );
         }
 
         if (tipoRelatorio === "perdidos") {
@@ -780,6 +1119,7 @@ export default function App() {
         );
       } catch (error) {
         console.error(error);
+
         alert(
           "Não foi possível gerar o PDF."
         );
@@ -788,41 +1128,6 @@ export default function App() {
         setShowPDFModal(false);
       }
     }, 150);
-  };
-
-  /* =========================================================
-     DATA FINAL DA LAVAGEM
-  ========================================================= */
-
-  const calcularDataFinal = (data) => {
-    if (!data) return "";
-
-    const [ano, mes, dia] = data
-      .split("-")
-      .map(Number);
-
-    const d = new Date(
-      ano,
-      mes - 1,
-      dia
-    );
-
-    const diaSemana = d.getDay();
-
-    if (diaSemana === 1) {
-      // SEG → SEX
-      d.setDate(d.getDate() + 4);
-    } else if (diaSemana === 3) {
-      // QUA → SEG
-      d.setDate(d.getDate() + 5);
-    } else if (diaSemana === 5) {
-      // SEX → QUA
-      d.setDate(d.getDate() + 5);
-    } else {
-      return "Funciona somente: Seg/Qua/Sex";
-    }
-
-    return d.toLocaleDateString("pt-BR");
   };
 
   /* =========================================================
@@ -862,8 +1167,11 @@ export default function App() {
             onClick={() => setDark(!dark)}
           >
             {dark ? "☀️" : "🌙"}
+
             <span>
-              {dark ? "Modo Claro" : "Modo Noturno"}
+              {dark
+                ? "Modo Claro"
+                : "Modo Noturno"}
             </span>
           </button>
         </header>
@@ -914,9 +1222,7 @@ export default function App() {
 
           <button
             className="action-btn pdf-btn"
-            onClick={() =>
-              setShowPDFModal(true)
-            }
+            onClick={() => setShowPDFModal(true)}
           >
             📄 <span>PDF</span>
           </button>
@@ -987,9 +1293,7 @@ export default function App() {
             className={`tab-btn perdidos ${
               tab === "perdidos" ? "active" : ""
             }`}
-            onClick={() =>
-              setTab("perdidos")
-            }
+            onClick={() => setTab("perdidos")}
           >
             <span className="tab-icon">⚠️</span>
             <span>Perdidos</span>
@@ -1011,9 +1315,7 @@ export default function App() {
         {/* NOVO MACACÃO */}
         <button
           className="add-btn"
-          onClick={() =>
-            setShowForm(!showForm)
-          }
+          onClick={() => setShowForm(!showForm)}
         >
           <span className="add-icon">
             {showForm ? "−" : "+"}
@@ -1030,9 +1332,7 @@ export default function App() {
             <div className="form-header">
               <div>
                 <span className="form-eyebrow">
-                  {editingId
-                    ? "EDIÇÃO"
-                    : "CADASTRO"}
+                  {editingId ? "EDIÇÃO" : "CADASTRO"}
                 </span>
 
                 <h2>
@@ -1079,8 +1379,7 @@ export default function App() {
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        codigo:
-                          e.target.value,
+                        codigo: e.target.value,
                       })
                     }
                   />
@@ -1105,31 +1404,55 @@ export default function App() {
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      tamanho:
-                        e.target.value,
+                      tamanho: e.target.value,
                     })
                   }
                 />
               </div>
 
+              {/* =================================================
+                  DATA CORRIGIDA
+                  
+                  NÃO USAMOS MAIS type="date".
+                  
+                  Agora aparece:
+                  DD/MM/AAAA
+              ================================================= */}
               <div className="field">
                 <label>Data</label>
 
                 <input
-                  type="date"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder="DD/MM/AAAA"
                   value={form.data}
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      data: e.target.value,
+                      data: formatarInputData(
+                        e.target.value
+                      ),
                     })
                   }
                 />
+
+                <small
+                  style={{
+                    display: "block",
+                    marginTop: "5px",
+                    opacity: 0.7,
+                  }}
+                >
+                  Digite no formato dia/mês/ano
+                </small>
               </div>
 
               {tab === "uso" && (
                 <div className="field full">
-                  <label>Nome da pessoa</label>
+                  <label>
+                    Nome da pessoa
+                  </label>
 
                   <input
                     placeholder="Nome de quem está usando"
@@ -1172,14 +1495,15 @@ export default function App() {
 
             <span>
               Pesquisando por:
-              <strong> "{search}"</strong>
+              <strong>
+                {" "}
+                "{search}"
+              </strong>
             </span>
 
             <span className="result-count">
               {filtered.length} resultado
-              {filtered.length !== 1
-                ? "s"
-                : ""}
+              {filtered.length !== 1 ? "s" : ""}
             </span>
           </div>
         )}
@@ -1222,7 +1546,7 @@ export default function App() {
                     : ""
                 }`}
               >
-                {/* BOTÃO P */}
+                {/* PERDIDO */}
                 <button
                   className={`item-action p ${
                     item.perdido
@@ -1241,9 +1565,7 @@ export default function App() {
                   P
                 </button>
 
-                {/* BOTÃO ARMÁRIO
-                    SOMENTE EM USO
-                */}
+                {/* ARMÁRIO */}
                 {tab === "uso" &&
                   item.status === "uso" &&
                   !item.perdido && (
@@ -1299,8 +1621,7 @@ export default function App() {
                     >
                       {item.perdido
                         ? "PERDIDO"
-                        : item.status ===
-                          "uso"
+                        : item.status === "uso"
                         ? "EM USO"
                         : item.status.toUpperCase()}
                     </span>
@@ -1314,12 +1635,10 @@ export default function App() {
 
                     <span>
                       <small>Tamanho</small>
-                      {item.tamanho ||
-                        "—"}
+                      {item.tamanho || "—"}
                     </span>
 
-                    {item.status ===
-                      "uso" &&
+                    {item.status === "uso" &&
                       item.nome && (
                         <span>
                           <small>Nome</small>
@@ -1332,61 +1651,54 @@ export default function App() {
                   {openItem === item.id && (
                     <div className="item-details">
                       <div className="detail">
-                        <span>
-                          Código
-                        </span>
+                        <span>Código</span>
+
                         <strong>
-                          {item.codigo ||
-                            "—"}
+                          {item.codigo || "—"}
                         </strong>
                       </div>
 
                       <div className="detail">
-                        <span>
-                          Número
-                        </span>
+                        <span>Número</span>
+
                         <strong>
-                          {item.numero ||
-                            "—"}
+                          {item.numero || "—"}
                         </strong>
                       </div>
 
                       <div className="detail">
-                        <span>
-                          Tamanho
-                        </span>
+                        <span>Tamanho</span>
+
                         <strong>
-                          {item.tamanho ||
-                            "—"}
+                          {item.tamanho || "—"}
                         </strong>
                       </div>
 
                       <div className="detail">
                         <span>Data</span>
+
                         <strong>
-                          {item.data ||
-                            "—"}
+                          {item.data
+                            ? formatarData(
+                                item.data
+                              )
+                            : "—"}
                         </strong>
                       </div>
 
-                      {item.status ===
-                        "uso" && (
+                      {item.status === "uso" && (
                         <>
                           <div className="detail full-detail">
-                            <span>
-                              Nome
-                            </span>
+                            <span>Nome</span>
 
                             <strong>
-                              {item.nome ||
-                                "—"}
+                              {item.nome || "—"}
                             </strong>
                           </div>
 
                           <div className="detail full-detail">
                             <span>
-                              Devolvido ao
-                              armário
+                              Devolvido ao armário
                             </span>
 
                             <strong
@@ -1428,20 +1740,15 @@ export default function App() {
                   <button
                     className={`status-change ${item.status}`}
                     onClick={() =>
-                      toggleStatus(
-                        item.id
-                      )
+                      toggleStatus(item.id)
                     }
                     title="Alterar status"
                   >
-                    {item.status ===
-                    "estoque"
+                    {item.status === "estoque"
                       ? "📦 Estoque"
-                      : item.status ===
-                        "lavagem"
+                      : item.status === "lavagem"
                       ? "🧺 Lavagem"
-                      : item.status ===
-                        "uso"
+                      : item.status === "uso"
                       ? "👤 Em Uso"
                       : item.status}
                   </button>
@@ -1475,7 +1782,7 @@ export default function App() {
       </div>
 
       {/* =====================================================
-          MODAL DE PDF
+          MODAL PDF
       ===================================================== */}
 
       {showPDFModal && (
@@ -1512,10 +1819,12 @@ export default function App() {
                 }
               >
                 <span>📦</span>
+
                 <div>
                   <strong>
                     Estoque
                   </strong>
+
                   <small>
                     {count.estoque} macacões
                   </small>
@@ -1528,10 +1837,12 @@ export default function App() {
                 }
               >
                 <span>🧺</span>
+
                 <div>
                   <strong>
                     Lavagem
                   </strong>
+
                   <small>
                     {count.lavagem} macacões
                   </small>
@@ -1544,10 +1855,12 @@ export default function App() {
                 }
               >
                 <span>👤</span>
+
                 <div>
                   <strong>
                     Em Uso
                   </strong>
+
                   <small>
                     {count.uso} macacões
                   </small>
@@ -1560,10 +1873,12 @@ export default function App() {
                 }
               >
                 <span>⚠️</span>
+
                 <div>
                   <strong>
                     Perdidos
                   </strong>
+
                   <small>
                     {count.perdidos} macacões
                   </small>
@@ -1577,10 +1892,12 @@ export default function App() {
                 }
               >
                 <span>📋</span>
+
                 <div>
                   <strong>
                     Todos
                   </strong>
+
                   <small>
                     Relatório completo
                   </small>
@@ -1614,7 +1931,9 @@ export default function App() {
       {scanning && (
         <div className="camera">
           <div className="scanner-card">
-            <Scanner onScan={handleScan} />
+            <Scanner
+              onScan={handleScan}
+            />
 
             <button
               className="scanner-close"
