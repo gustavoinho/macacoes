@@ -2,7 +2,12 @@ import { useState, useEffect } from "react";
 import "./style.css";
 import jsPDF from "jspdf";
 import Scanner from "../src/components/Scanner";
-import { loadItems, saveItems } from "./storage";
+import {
+  loadItems,
+  saveItems,
+  syncPending,
+  checkConnection,
+} from "./storage";
 
 const STORAGE_UPDATE_KEY = "macacoes_ultima_atualizacao";
 
@@ -37,17 +42,35 @@ export default function App() {
   ========================================================= */
 
   useEffect(() => {
-    const dados = loadItems();
+    let ativo = true;
 
-    setItems(Array.isArray(dados) ? dados : []);
+    const carregar = async () => {
+      try {
+        const dados = await loadItems();
 
-    const ultima = localStorage.getItem(STORAGE_UPDATE_KEY);
+        if (!ativo) return;
 
-    if (ultima) {
-      setUltimaAtualizacao(ultima);
-    }
+        setItems(Array.isArray(dados) ? dados : []);
 
-    setLoaded(true);
+        const ultima = localStorage.getItem(STORAGE_UPDATE_KEY);
+
+        if (ultima) {
+          setUltimaAtualizacao(ultima);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar estoque:", error);
+      } finally {
+        if (ativo) {
+          setLoaded(true);
+        }
+      }
+    };
+
+    carregar();
+
+    return () => {
+      ativo = false;
+    };
   }, []);
 
   /* =========================================================
@@ -57,13 +80,68 @@ export default function App() {
   useEffect(() => {
     if (!loaded) return;
 
-    saveItems(items);
+    let ativo = true;
 
-    const agora = new Date().toISOString();
+    const salvar = async () => {
+      const agora = new Date().toISOString();
+      await saveItems(items);
+      if (!ativo) return;
+      localStorage.setItem(STORAGE_UPDATE_KEY, agora);
+      setUltimaAtualizacao(agora);
+    };
 
-    localStorage.setItem(STORAGE_UPDATE_KEY, agora);
-    setUltimaAtualizacao(agora);
+    salvar();
+
+    return () => {
+      ativo = false;
+    };
   }, [items, loaded]);
+
+  /* =========================================================
+     SINCRONIZAÇÃO AUTOMÁTICA
+     - tenta reenviar pendências
+     - verifica o banco periodicamente
+     - não sobrescreve alterações locais enquanto houver pendência
+  ========================================================= */
+
+  useEffect(() => {
+    if (!loaded) return;
+
+    let ativo = true;
+
+    const sincronizar = async () => {
+      if (!ativo) return;
+
+      const conectado = await checkConnection();
+      if (!conectado) return;
+
+      const resultado = await syncPending();
+      if (!ativo) return;
+
+      if (resultado?.synced || resultado?.hadPending === false) {
+        const dados = await loadItems({ skipPendingUpload: true });
+
+        if (ativo && Array.isArray(dados)) {
+          const aindaPendente = localStorage.getItem(
+            "estoque_app_pending_sync"
+          );
+          if (!aindaPendente) setItems(dados);
+        }
+      }
+    };
+
+    sincronizar();
+    const intervalo = setInterval(sincronizar, 5000);
+
+    const aoVoltarOnline = () => sincronizar();
+    window.addEventListener("online", aoVoltarOnline);
+
+    return () => {
+      ativo = false;
+      clearInterval(intervalo);
+      window.removeEventListener("online", aoVoltarOnline);
+    };
+  }, [loaded]);
 
   /* =========================================================
      DATAS
@@ -589,7 +667,7 @@ export default function App() {
           lastStatus:
             tab === "perdidos" ? "estoque" : tab,
           devolvidoArmario: false,
-          id: Date.now(),
+          id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         },
       ]);
     }

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "npm run dev",
+    "start": "node server.js",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
@@ -14,7 +14,9 @@
     "html5-qrcode": "^2.3.8",
     "jspdf": "^4.2.1",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "express": "^5.1.0",
+    "dotenv": "^17.2.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
