@@ -1,12 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./style.css";
 import jsPDF from "jspdf";
 import Scanner from "../src/components/Scanner";
 import {
   loadItems,
   saveItems,
-  syncPending,
-  checkConnection,
 } from "./storage";
 
 const STORAGE_UPDATE_KEY = "macacoes_ultima_atualizacao";
@@ -15,6 +13,7 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [items, setItems] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  const ignorarProximoAutosave = useRef(false);
 
   const [showForm, setShowForm] = useState(false);
   const [tab, setTab] = useState("estoque");
@@ -38,107 +37,88 @@ export default function App() {
   });
 
   /* =========================================================
-   CARREGAMENTO
-========================================================= */
+     CARREGAMENTO
+     - O Sentinel Database é a fonte principal dos dados.
+     - O cache local só é usado pelo storage.js quando o banco
+       estiver temporariamente indisponível.
+     - IMPORTANTE: não salvamos automaticamente logo após
+       carregar o banco, evitando reenviar um snapshot antigo.
+  ========================================================= */
 
-useEffect(() => {
-  let ativo = true;
+  useEffect(() => {
+    let ativo = true;
 
-  const carregar = async () => {
-    try {
-      const dados = await loadItems();
+    const carregar = async () => {
+      try {
+        const dados = await loadItems();
 
-      if (!ativo) return;
+        if (!ativo) return;
 
-      /*
-       * IMPORTANTE:
-       * Só liberamos o salvamento automático depois que
-       * o estoque foi carregado com sucesso.
-       *
-       * Se o Sentinel Database estiver indisponível e não
-       * houver cache local, loadItems() lança um erro.
-       * Nesse caso, loaded continua false e o App NÃO envia [].
-       */
-      if (!Array.isArray(dados)) {
-        throw new Error(
-          "O estoque carregado não é uma lista válida."
-        );
+        if (!Array.isArray(dados)) {
+          throw new Error(
+            "O estoque carregado não é uma lista válida."
+          );
+        }
+
+        // Impede que o primeiro efeito de autosave envie
+        // novamente o snapshot recém-carregado.
+        ignorarProximoAutosave.current = true;
+
+        setItems(dados);
+
+        const ultima = localStorage.getItem(STORAGE_UPDATE_KEY);
+
+        if (ultima) {
+          setUltimaAtualizacao(ultima);
+        }
+
+        setLoaded(true);
+      } catch (error) {
+        console.error("Erro ao carregar estoque:", error);
+
+        if (ativo) {
+          setLoaded(false);
+          alert(
+            "⚠️ Não foi possível carregar o estoque.\n\n" +
+            "O sistema NÃO irá apagar os dados do banco.\n\n" +
+            "Verifique a conexão com o Sentinel Database e recarregue a página."
+          );
+        }
       }
+    };
 
-      setItems(dados);
+    carregar();
 
-      const ultima = localStorage.getItem(
-        STORAGE_UPDATE_KEY
-      );
+    return () => {
+      ativo = false;
+    };
+  }, []);
 
-      if (ultima) {
-        setUltimaAtualizacao(ultima);
-      }
+  /* =========================================================
+     SALVAMENTO AUTOMÁTICO
+     - Só salva quando o usuário realmente altera items.
+     - O storage.js controla a fila e mantém apenas o snapshot
+       mais recente para evitar ressurreição de dados antigos.
+  ========================================================= */
 
-      setLoaded(true);
+  useEffect(() => {
+    if (!loaded) return;
 
-    } catch (error) {
-      console.error(
-        "Erro ao carregar estoque:",
-        error
-      );
-
-      if (ativo) {
-        /*
-         * Não colocamos [] no estado e NÃO liberamos o
-         * salvamento automático. Isso evita apagar o banco
-         * quando o carregamento falha.
-         */
-        setLoaded(false);
-
-        alert(
-          "⚠️ Não foi possível carregar o estoque.\n\n" +
-          "O sistema NÃO irá apagar os dados do banco.\n\n" +
-          "Verifique a conexão com o Sentinel Database e recarregue a página."
-        );
-      }
+    if (ignorarProximoAutosave.current) {
+      ignorarProximoAutosave.current = false;
+      return;
     }
-  };
 
-  carregar();
+    let ativo = true;
 
-  return () => {
-    ativo = false;
-  };
-
-}, []);
-
-
-/* =========================================================
-   SALVAMENTO AUTOMÁTICO
-========================================================= */
-
-useEffect(() => {
-  /*
-   * Nunca salvar enquanto o carregamento inicial não terminou.
-   *
-   * Isso é a proteção principal contra o problema em que
-   * items começa como [] e o App poderia mandar [] para o banco
-   * antes de terminar de carregar os dados reais.
-   */
-  if (!loaded) return;
-
-  let ativo = true;
-
-  const salvar = async () => {
-    const agora = new Date().toISOString();
-
-    try {
+    const salvar = async () => {
       const sucesso = await saveItems(items);
 
       if (!ativo) return;
 
-      /*
-       * Só atualizamos "Última atualização" quando o
-       * storage confirmou a operação ou guardou a alteração
-       * localmente como pendência.
-       */
       if (sucesso) {
+        const agora = new Date().toISOString();
+
         localStorage.setItem(
           STORAGE_UPDATE_KEY,
           agora
@@ -146,21 +126,14 @@ useEffect(() => {
 
         setUltimaAtualizacao(agora);
       }
-    } catch (error) {
-      console.error(
-        "Erro no salvamento automático:",
-        error
-      );
-    }
-  };
+    };
 
-  salvar();
+    salvar();
 
-  return () => {
-    ativo = false;
-  };
-
-}, [items, loaded]);
+    return () => {
+      ativo = false;
+    };
+  }, [items, loaded]);
 
   /* =========================================================
      DATAS
@@ -686,7 +659,7 @@ useEffect(() => {
           lastStatus:
             tab === "perdidos" ? "estoque" : tab,
           devolvidoArmario: false,
-          id: Date.now(),
+          id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         },
       ]);
     }
@@ -823,62 +796,6 @@ useEffect(() => {
     salvarHistorico(items);
 
     setItems(items.filter((i) => i.id !== id));
-  };
-
-  /* =========================================================
-     EXCLUIR TODOS OS MACACÕES — ÁREA PROTEGIDA
-
-     Proteção em 3 etapas:
-     1. Primeira confirmação
-     2. Segunda confirmação
-     3. Senha 1234
-  ========================================================= */
-
-  const excluirTodos = () => {
-    if (items.length === 0) {
-      alert("Não há macacões para excluir.");
-      return;
-    }
-
-    const primeiraConfirmacao = window.confirm(
-      `⚠️ ATENÇÃO!\n\n` +
-      `Você está prestes a excluir TODOS os ${items.length} macacões.\n\n` +
-      `Deseja continuar?`
-    );
-
-    if (!primeiraConfirmacao) return;
-
-    const segundaConfirmacao = window.confirm(
-      "🚨 ÚLTIMA CONFIRMAÇÃO!\n\n" +
-      "Esta ação removerá TODOS os macacões do estoque.\n\n" +
-      "Não confirme se você não tiver certeza.\n\n" +
-      "Deseja REALMENTE excluir tudo?"
-    );
-
-    if (!segundaConfirmacao) return;
-
-    const senha = window.prompt(
-      "🔐 ÁREA PROTEGIDA\n\n" +
-      "Digite a senha para confirmar a exclusão de TODOS os macacões:"
-    );
-
-    if (senha === null) return;
-
-    if (senha !== "1234") {
-      alert(
-        "❌ SENHA INCORRETA!\n\n" +
-        "Nenhum macacão foi excluído."
-      );
-      return;
-    }
-
-    salvarHistorico(items);
-    setItems([]);
-
-    alert(
-      "✅ Exclusão confirmada.\n\n" +
-      "Todos os macacões foram removidos."
-    );
   };
 
   /* =========================================================
@@ -1396,14 +1313,6 @@ useEffect(() => {
             }
           >
             📥 <span>Importar</span>
-          </button>
-
-          <button
-            className="action-btn delete-all-btn"
-            onClick={excluirTodos}
-            title="Excluir todos os macacões"
-          >
-            🗑️ <span>Excluir Todos</span>
           </button>
 
           <input
