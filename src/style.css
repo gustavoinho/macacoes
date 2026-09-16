@@ -1486,3 +1486,32 @@ button {
     flex-direction: column;
   }
 }
+
+/* =========================================================
+   EXCLUIR TODOS — AÇÃO DESTRUTIVA
+========================================================= */
+
+.delete-all-btn {
+  background: linear-gradient(
+    135deg,
+    #dc2626,
+    #991b1b
+  );
+  border-color: transparent;
+  color: white;
+  font-weight: 850;
+}
+
+.delete-all-btn:hover {
+  background: linear-gradient(
+    135deg,
+    #ef4444,
+    #b91c1c
+  );
+  color: white;
+}
+
+.delete-all-btn:focus-visible {
+  outline: 3px solid rgba(220, 38, 38, 0.3);
+  outline-offset: 2px;
+}

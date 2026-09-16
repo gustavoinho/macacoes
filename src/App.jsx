@@ -38,110 +38,81 @@ export default function App() {
   });
 
   /* =========================================================
-     CARREGAMENTO
-  ========================================================= */
+   CARREGAMENTO
+========================================================= */
 
-  useEffect(() => {
-    let ativo = true;
+useEffect(() => {
+  let ativo = true;
 
-    const carregar = async () => {
-      try {
-        const dados = await loadItems();
+  const carregar = async () => {
+    try {
+      const dados = await loadItems();
 
-        if (!ativo) return;
+      if (!ativo) return;
 
-        setItems(Array.isArray(dados) ? dados : []);
+      setItems(Array.isArray(dados) ? dados : []);
 
-        const ultima = localStorage.getItem(STORAGE_UPDATE_KEY);
+      const ultima = localStorage.getItem(
+        "macacoes_ultima_atualizacao"
+      );
 
-        if (ultima) {
-          setUltimaAtualizacao(ultima);
-        }
-      } catch (error) {
-        console.error("Erro ao carregar estoque:", error);
-      } finally {
-        if (ativo) {
-          setLoaded(true);
-        }
+      if (ultima) {
+        setUltimaAtualizacao(ultima);
       }
-    };
 
-    carregar();
+    } catch (error) {
 
-    return () => {
-      ativo = false;
-    };
-  }, []);
+      console.error(
+        "Erro ao carregar estoque:",
+        error
+      );
 
-  /* =========================================================
-     SALVAMENTO AUTOMÁTICO
-  ========================================================= */
+    } finally {
 
-  useEffect(() => {
-    if (!loaded) return;
-
-    let ativo = true;
-
-    const salvar = async () => {
-      const agora = new Date().toISOString();
-      await saveItems(items);
-      if (!ativo) return;
-      localStorage.setItem(STORAGE_UPDATE_KEY, agora);
-      setUltimaAtualizacao(agora);
-    };
-
-    salvar();
-
-    return () => {
-      ativo = false;
-    };
-  }, [items, loaded]);
-
-  /* =========================================================
-     SINCRONIZAÇÃO AUTOMÁTICA
-     - tenta reenviar pendências
-     - verifica o banco periodicamente
-     - não sobrescreve alterações locais enquanto houver pendência
-  ========================================================= */
-
-  useEffect(() => {
-    if (!loaded) return;
-
-    let ativo = true;
-
-    const sincronizar = async () => {
-      if (!ativo) return;
-
-      const conectado = await checkConnection();
-      if (!conectado) return;
-
-      const resultado = await syncPending();
-      if (!ativo) return;
-
-      if (resultado?.synced || resultado?.hadPending === false) {
-        const dados = await loadItems({ skipPendingUpload: true });
-
-        if (ativo && Array.isArray(dados)) {
-          const aindaPendente = localStorage.getItem(
-            "estoque_app_pending_sync"
-          );
-          if (!aindaPendente) setItems(dados);
-        }
+      if (ativo) {
+        setLoaded(true);
       }
-    };
+    }
+  };
 
-    sincronizar();
-    const intervalo = setInterval(sincronizar, 5000);
+  carregar();
 
-    const aoVoltarOnline = () => sincronizar();
-    window.addEventListener("online", aoVoltarOnline);
+  return () => {
+    ativo = false;
+  };
 
-    return () => {
-      ativo = false;
-      clearInterval(intervalo);
-      window.removeEventListener("online", aoVoltarOnline);
-    };
-  }, [loaded]);
+}, []);
+
+
+/* =========================================================
+   SALVAMENTO AUTOMÁTICO
+========================================================= */
+
+useEffect(() => {
+
+  if (!loaded) return;
+
+  const salvar = async () => {
+
+    const agora = new Date().toISOString();
+
+    // Primeiro salva localmente e tenta enviar.
+    // Se o banco estiver offline, o storage.js
+    // mantém a alteração na fila.
+
+    await saveItems(items);
+
+    localStorage.setItem(
+      STORAGE_UPDATE_KEY,
+      agora
+    );
+
+    setUltimaAtualizacao(agora);
+  };
+
+  salvar();
+
+}, [items, loaded]);
 
   /* =========================================================
      DATAS
@@ -667,7 +638,7 @@ export default function App() {
           lastStatus:
             tab === "perdidos" ? "estoque" : tab,
           devolvidoArmario: false,
-          id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          id: Date.now(),
         },
       ]);
     }
@@ -804,6 +775,62 @@ export default function App() {
     salvarHistorico(items);
 
     setItems(items.filter((i) => i.id !== id));
+  };
+
+  /* =========================================================
+     EXCLUIR TODOS OS MACACÕES — ÁREA PROTEGIDA
+
+     Proteção em 3 etapas:
+     1. Primeira confirmação
+     2. Segunda confirmação
+     3. Senha 1234
+  ========================================================= */
+
+  const excluirTodos = () => {
+    if (items.length === 0) {
+      alert("Não há macacões para excluir.");
+      return;
+    }
+
+    const primeiraConfirmacao = window.confirm(
+      `⚠️ ATENÇÃO!\n\n` +
+      `Você está prestes a excluir TODOS os ${items.length} macacões.\n\n` +
+      `Deseja continuar?`
+    );
+
+    if (!primeiraConfirmacao) return;
+
+    const segundaConfirmacao = window.confirm(
+      "🚨 ÚLTIMA CONFIRMAÇÃO!\n\n" +
+      "Esta ação removerá TODOS os macacões do estoque.\n\n" +
+      "Não confirme se você não tiver certeza.\n\n" +
+      "Deseja REALMENTE excluir tudo?"
+    );
+
+    if (!segundaConfirmacao) return;
+
+    const senha = window.prompt(
+      "🔐 ÁREA PROTEGIDA\n\n" +
+      "Digite a senha para confirmar a exclusão de TODOS os macacões:"
+    );
+
+    if (senha === null) return;
+
+    if (senha !== "1234") {
+      alert(
+        "❌ SENHA INCORRETA!\n\n" +
+        "Nenhum macacão foi excluído."
+      );
+      return;
+    }
+
+    salvarHistorico(items);
+    setItems([]);
+
+    alert(
+      "✅ Exclusão confirmada.\n\n" +
+      "Todos os macacões foram removidos."
+    );
   };
 
   /* =========================================================
@@ -1321,6 +1348,14 @@ export default function App() {
             }
           >
             📥 <span>Importar</span>
+          </button>
+
+          <button
+            className="action-btn delete-all-btn"
+            onClick={excluirTodos}
+            title="Excluir todos os macacões"
+          >
+            🗑️ <span>Excluir Todos</span>
           </button>
 
           <input
