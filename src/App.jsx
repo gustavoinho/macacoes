@@ -50,27 +50,52 @@ useEffect(() => {
 
       if (!ativo) return;
 
-      setItems(Array.isArray(dados) ? dados : []);
+      /*
+       * IMPORTANTE:
+       * Só liberamos o salvamento automático depois que
+       * o estoque foi carregado com sucesso.
+       *
+       * Se o Sentinel Database estiver indisponível e não
+       * houver cache local, loadItems() lança um erro.
+       * Nesse caso, loaded continua false e o App NÃO envia [].
+       */
+      if (!Array.isArray(dados)) {
+        throw new Error(
+          "O estoque carregado não é uma lista válida."
+        );
+      }
+
+      setItems(dados);
 
       const ultima = localStorage.getItem(
-        "macacoes_ultima_atualizacao"
+        STORAGE_UPDATE_KEY
       );
 
       if (ultima) {
         setUltimaAtualizacao(ultima);
       }
 
-    } catch (error) {
+      setLoaded(true);
 
+    } catch (error) {
       console.error(
         "Erro ao carregar estoque:",
         error
       );
 
-    } finally {
-
       if (ativo) {
-        setLoaded(true);
+        /*
+         * Não colocamos [] no estado e NÃO liberamos o
+         * salvamento automático. Isso evita apagar o banco
+         * quando o carregamento falha.
+         */
+        setLoaded(false);
+
+        alert(
+          "⚠️ Não foi possível carregar o estoque.\n\n" +
+          "O sistema NÃO irá apagar os dados do banco.\n\n" +
+          "Verifique a conexão com o Sentinel Database e recarregue a página."
+        );
       }
     }
   };
@@ -89,28 +114,51 @@ useEffect(() => {
 ========================================================= */
 
 useEffect(() => {
-
+  /*
+   * Nunca salvar enquanto o carregamento inicial não terminou.
+   *
+   * Isso é a proteção principal contra o problema em que
+   * items começa como [] e o App poderia mandar [] para o banco
+   * antes de terminar de carregar os dados reais.
+   */
   if (!loaded) return;
 
-  const salvar = async () => {
+  let ativo = true;
 
+  const salvar = async () => {
     const agora = new Date().toISOString();
 
-    // Primeiro salva localmente e tenta enviar.
-    // Se o banco estiver offline, o storage.js
-    // mantém a alteração na fila.
+    try {
+      const sucesso = await saveItems(items);
 
-    await saveItems(items);
+      if (!ativo) return;
 
-    localStorage.setItem(
-      STORAGE_UPDATE_KEY,
-      agora
-    );
+      /*
+       * Só atualizamos "Última atualização" quando o
+       * storage confirmou a operação ou guardou a alteração
+       * localmente como pendência.
+       */
+      if (sucesso) {
+        localStorage.setItem(
+          STORAGE_UPDATE_KEY,
+          agora
+        );
 
-    setUltimaAtualizacao(agora);
+        setUltimaAtualizacao(agora);
+      }
+    } catch (error) {
+      console.error(
+        "Erro no salvamento automático:",
+        error
+      );
+    }
   };
 
   salvar();
+
+  return () => {
+    ativo = false;
+  };
 
 }, [items, loaded]);
 

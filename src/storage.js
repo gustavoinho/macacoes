@@ -1,111 +1,75 @@
 const API_URL = "/api/estoque";
 
-const LOCAL_DATA_KEY = "estoque_app_v1";
+const LOCAL_KEY = "estoque_app_v1";
 const PENDING_KEY = "estoque_app_pending_sync";
 const LAST_SYNC_KEY = "estoque_app_last_sync";
 
-
-// ============================================================
-// REQUISIÇÃO
-// ============================================================
-
-async function request(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok || data?.success === false) {
-    throw new Error(
-      data?.error || `Erro HTTP ${response.status}`
+function saveLocalItems(items) {
+  try {
+    localStorage.setItem(
+      LOCAL_KEY,
+      JSON.stringify(Array.isArray(items) ? items : [])
     );
+  } catch (error) {
+    console.error("Erro ao salvar cache local:", error);
   }
-
-  return data;
 }
-
-
-// ============================================================
-// DADOS LOCAIS
-// ============================================================
 
 function loadLocalItems() {
   try {
-    const data = localStorage.getItem(LOCAL_DATA_KEY);
+    const raw = localStorage.getItem(LOCAL_KEY);
 
-    if (!data) return [];
+    if (!raw) {
+      return [];
+    }
 
-    const parsed = JSON.parse(data);
+    const data = JSON.parse(raw);
 
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(data) ? data : [];
   } catch (error) {
-    console.error("Erro ao carregar dados locais:", error);
+    console.error("Erro ao ler cache local:", error);
     return [];
   }
 }
-
-
-function saveLocalItems(items) {
-  try {
-    if (!Array.isArray(items)) return;
-
-    localStorage.setItem(
-      LOCAL_DATA_KEY,
-      JSON.stringify(items)
-    );
-  } catch (error) {
-    console.error("Erro ao salvar dados locais:", error);
-  }
-}
-
-
-// ============================================================
-// FILA DE PENDENTES
-// ============================================================
-
-function loadPendingSync() {
-  try {
-    const data = localStorage.getItem(PENDING_KEY);
-
-    if (!data) return null;
-
-    const parsed = JSON.parse(data);
-
-    return Array.isArray(parsed) ? parsed : null;
-  } catch (error) {
-    console.error("Erro ao carregar fila:", error);
-    return null;
-  }
-}
-
 
 function savePendingSync(items) {
   try {
     localStorage.setItem(
       PENDING_KEY,
-      JSON.stringify(items)
+      JSON.stringify(Array.isArray(items) ? items : [])
     );
   } catch (error) {
-    console.error("Erro ao salvar fila:", error);
+    console.error(
+      "Erro ao guardar sincronização pendente:",
+      error
+    );
   }
 }
 
-
-function clearPendingSync() {
+function loadPendingSync() {
   try {
-    localStorage.removeItem(PENDING_KEY);
-  } catch {}
+    const raw = localStorage.getItem(PENDING_KEY);
+
+    if (!raw) {
+      return null;
+    }
+
+    const data = JSON.parse(raw);
+
+    return Array.isArray(data) ? data : null;
+  } catch (error) {
+    console.error(
+      "Erro ao ler sincronização pendente:",
+      error
+    );
+
+    return null;
+  }
 }
 
-
-// ============================================================
-// ÚLTIMA SINCRONIZAÇÃO
-// ============================================================
+function clearPendingSync() {
+  localStorage.removeItem(PENDING_KEY);
+}
 
 function setLastSync() {
   try {
@@ -116,102 +80,201 @@ function setLastSync() {
   } catch {}
 }
 
+async function request(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
 
-export function getLastSync() {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+
+  const text = await response.text();
+
+  let data = {};
+
   try {
-    return localStorage.getItem(LAST_SYNC_KEY) || "";
+    data = text ? JSON.parse(text) : {};
   } catch {
-    return "";
+    throw new Error(
+      "Resposta inválida recebida do servidor."
+    );
   }
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error ||
+        `Erro HTTP ${response.status}`
+    );
+  }
+
+  if (data?.success === false) {
+    throw new Error(
+      data?.error ||
+        "O servidor recusou a operação."
+    );
+  }
+
+  return data;
 }
 
+/* =========================================================
+   CARREGAR
+========================================================= */
 
-// ============================================================
-// CARREGAR
-// ============================================================
+export const loadItems = async ({
+  skipPendingUpload = false,
+} = {}) => {
+  const localItems = loadLocalItems();
 
-export const loadItems = async () => {
+  /*
+   * Se existem alterações pendentes, tentamos sincronizar
+   * primeiro.
+   */
+  const pending = loadPendingSync();
 
-  // Primeiro tentamos o banco.
+  if (pending && !skipPendingUpload) {
+    const resultado = await syncPending();
+
+    if (resultado.synced) {
+      return await loadItems({
+        skipPendingUpload: true,
+      });
+    }
+
+    /*
+     * Banco indisponível:
+     * usamos a cópia local/pedente.
+     *
+     * IMPORTANTE:
+     * isso NÃO significa que o banco está vazio.
+     */
+    return pending;
+  }
 
   try {
     const data = await request(API_URL);
 
-    const items = Array.isArray(data?.items)
-      ? data.items
-      : [];
+    /*
+     * O servidor PRECISA mandar "items".
+     *
+     * Se não mandar, consideramos erro.
+     *
+     * Isso evita que uma resposta quebrada seja
+     * interpretada como estoque vazio.
+     */
+    if (!Object.prototype.hasOwnProperty.call(data, "items")) {
+      throw new Error(
+        "Resposta do Sentinel Database não contém 'items'."
+      );
+    }
 
-    // Salva uma cópia local imediatamente.
+    if (!Array.isArray(data.items)) {
+      throw new Error(
+        "O campo 'items' recebido do servidor não é uma lista."
+      );
+    }
+
+    const items = data.items;
+
+    /*
+     * MIGRAÇÃO:
+     *
+     * Só fazemos isso quando o servidor respondeu
+     * corretamente dizendo que possui 0 itens.
+     *
+     * Se o servidor estiver fora do ar, cai no catch
+     * e NUNCA entra aqui.
+     */
+    if (
+      items.length === 0 &&
+      localItems.length > 0
+    ) {
+      console.log(
+        "Banco central vazio. Verificando migração do cache local..."
+      );
+
+      savePendingSync(localItems);
+
+      const resultado = await syncPending();
+
+      if (resultado.synced) {
+        return localItems;
+      }
+
+      /*
+       * Não conseguiu sincronizar.
+       * Mantém o estoque local.
+       */
+      return localItems;
+    }
+
+    /*
+     * Banco respondeu corretamente.
+     * Agora podemos confiar nos dados.
+     */
     saveLocalItems(items);
 
     setLastSync();
 
-    // Se havia alterações pendentes,
-    // tentamos enviá-las agora.
-
-    const pending = loadPendingSync();
-
-    if (pending) {
-      try {
-        await saveItems(pending);
-
-        return pending;
-      } catch (error) {
-        console.warn(
-          "Não foi possível enviar pendências:",
-          error
-        );
-      }
-    }
-
     return items;
-
   } catch (error) {
-
-    console.warn(
-      "Sentinel Database indisponível. Trabalhando offline.",
+    console.error(
+      "Erro ao carregar Sentinel Database:",
       error
     );
 
-    // Banco offline:
-    // devolve a última cópia local.
+    /*
+     * IMPORTANTE:
+     *
+     * Se existe cache local, usamos.
+     *
+     * Se NÃO existe cache local, NÃO retornamos [].
+     *
+     * Isso impede que o App pense:
+     *
+     * "Banco vazio!"
+     *
+     * e depois envie [] para o servidor.
+     */
+    if (localItems.length > 0) {
+      console.warn(
+        "Sentinel Database indisponível. Usando cache local."
+      );
 
-    return loadLocalItems();
+      return localItems;
+    }
+
+    /*
+     * Sem banco e sem cache.
+     *
+     * Jogamos o erro para o App.
+     */
+    throw error;
   }
 };
 
-
-// ============================================================
-// SALVAR
-// ============================================================
+/* =========================================================
+   SALVAR
+========================================================= */
 
 export const saveItems = async (items) => {
-
   if (!Array.isArray(items)) {
     return false;
   }
 
-  // ==========================================================
-  // PRIMEIRO:
-  // salva imediatamente no dispositivo.
-  // ==========================================================
-
+  /*
+   * Primeiro salva no navegador.
+   */
   saveLocalItems(items);
 
-  // ==========================================================
-  // SEGUNDO:
-  // coloca na fila de sincronização.
-  // ==========================================================
-
+  /*
+   * Guarda como pendência.
+   */
   savePendingSync(items);
 
-  // ==========================================================
-  // TERCEIRO:
-  // tenta enviar para o Sentinel Database.
-  // ==========================================================
-
   try {
-
     await request(API_URL, {
       method: "PUT",
 
@@ -220,44 +283,40 @@ export const saveItems = async (items) => {
       }),
     });
 
-    // Banco recebeu com sucesso.
-
+    /*
+     * Só removemos a pendência depois que o
+     * Sentinel Database confirmou o salvamento.
+     */
     clearPendingSync();
 
     setLastSync();
 
     return true;
-
   } catch (error) {
-
     console.warn(
-      "Banco indisponível. Alteração mantida na fila.",
+      "Banco indisponível. Alteração mantida localmente:",
       error
     );
-
-    // NÃO apagamos a fila.
-
-    // A próxima tentativa vai reenviar.
 
     return false;
   }
 };
 
-
-// ============================================================
-// SINCRONIZAÇÃO MANUAL
-// ============================================================
+/* =========================================================
+   SINCRONIZAR PENDÊNCIAS
+========================================================= */
 
 export const syncPending = async () => {
-
   const pending = loadPendingSync();
 
   if (!pending) {
-    return true;
+    return {
+      synced: false,
+      hadPending: false,
+    };
   }
 
   try {
-
     await request(API_URL, {
       method: "PUT",
 
@@ -272,43 +331,44 @@ export const syncPending = async () => {
 
     setLastSync();
 
-    return true;
-
+    return {
+      synced: true,
+      hadPending: true,
+      items: pending,
+    };
   } catch (error) {
-
     console.warn(
-      "Sincronização ainda não disponível.",
+      "Ainda não foi possível sincronizar:",
       error
     );
 
-    return false;
+    return {
+      synced: false,
+      hadPending: true,
+    };
   }
 };
 
-
-// ============================================================
-// VERIFICAR CONEXÃO
-// ============================================================
+/* =========================================================
+   VERIFICAR CONEXÃO
+========================================================= */
 
 export const checkConnection = async () => {
-
   try {
-
-    await request(API_URL);
+    await request("/api/health", {
+      method: "GET",
+    });
 
     return true;
-
   } catch {
-
     return false;
   }
 };
 
-
-// ============================================================
-// QUANTIDADE DE PENDÊNCIAS
-// ============================================================
+/* =========================================================
+   VERIFICAR PENDÊNCIA
+========================================================= */
 
 export const hasPendingSync = () => {
-  return loadPendingSync() !== null;
+  return Boolean(loadPendingSync());
 };
