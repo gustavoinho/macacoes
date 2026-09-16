@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from "react";
+
 import "./style.css";
+
 import jsPDF from "jspdf";
+
 import Scanner from "../src/components/Scanner";
+
 import {
   loadItems,
   saveItems,
@@ -13,6 +17,7 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [items, setItems] = useState([]);
   const [loaded, setLoaded] = useState(false);
+
   const ignorarProximoAutosave = useRef(false);
 
   const [showForm, setShowForm] = useState(false);
@@ -22,9 +27,7 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [openItem, setOpenItem] = useState(null);
   const [dark, setDark] = useState(false);
-
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState("");
-
   const [showPDFModal, setShowPDFModal] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
@@ -38,6 +41,7 @@ export default function App() {
 
   /* =========================================================
      CARREGAMENTO
+
      - O Sentinel Database é a fonte principal dos dados.
      - O cache local só é usado pelo storage.js quando o banco
        estiver temporariamente indisponível.
@@ -66,7 +70,9 @@ export default function App() {
 
         setItems(dados);
 
-        const ultima = localStorage.getItem(STORAGE_UPDATE_KEY);
+        const ultima = localStorage.getItem(
+          STORAGE_UPDATE_KEY
+        );
 
         if (ultima) {
           setUltimaAtualizacao(ultima);
@@ -74,14 +80,18 @@ export default function App() {
 
         setLoaded(true);
       } catch (error) {
-        console.error("Erro ao carregar estoque:", error);
+        console.error(
+          "Erro ao carregar estoque:",
+          error
+        );
 
         if (ativo) {
           setLoaded(false);
+
           alert(
             "⚠️ Não foi possível carregar o estoque.\n\n" +
-            "O sistema NÃO irá apagar os dados do banco.\n\n" +
-            "Verifique a conexão com o Sentinel Database e recarregue a página."
+              "O sistema NÃO irá apagar os dados do banco.\n\n" +
+              "Verifique a conexão com o Sentinel Database e recarregue a página."
           );
         }
       }
@@ -96,6 +106,7 @@ export default function App() {
 
   /* =========================================================
      SALVAMENTO AUTOMÁTICO
+
      - Só salva quando o usuário realmente altera items.
      - O storage.js controla a fila e mantém apenas o snapshot
        mais recente para evitar ressurreição de dados antigos.
@@ -137,14 +148,6 @@ export default function App() {
 
   /* =========================================================
      DATAS
-     
-     O USUÁRIO SEMPRE VÊ:
-     DD/MM/AAAA
-     
-     O SISTEMA PODE CONTINUAR TENDO:
-     YYYY-MM-DD
-     
-     Isso mantém compatibilidade com dados antigos.
   ========================================================= */
 
   const formatarData = (data) => {
@@ -160,26 +163,35 @@ export default function App() {
     // DD-MM-AAAA
     if (/^\d{2}-\d{2}-\d{4}$/.test(valor)) {
       const [dia, mes, ano] = valor.split("-");
+
       return `${dia}/${mes}/${ano}`;
     }
 
     // AAAA-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
       const [ano, mes, dia] = valor.split("-");
+
       return `${dia}/${mes}/${ano}`;
     }
 
     // AAAA/MM/DD
     if (/^\d{4}\/\d{2}\/\d{2}$/.test(valor)) {
       const [ano, mes, dia] = valor.split("/");
+
       return `${dia}/${mes}/${ano}`;
     }
 
     const dataConvertida = new Date(valor);
 
     if (!Number.isNaN(dataConvertida.getTime())) {
-      const dia = String(dataConvertida.getDate()).padStart(2, "0");
-      const mes = String(dataConvertida.getMonth() + 1).padStart(2, "0");
+      const dia = String(
+        dataConvertida.getDate()
+      ).padStart(2, "0");
+
+      const mes = String(
+        dataConvertida.getMonth() + 1
+      ).padStart(2, "0");
+
       const ano = dataConvertida.getFullYear();
 
       return `${dia}/${mes}/${ano}`;
@@ -194,6 +206,7 @@ export default function App() {
    * Isso é usado apenas internamente para manter
    * compatibilidade com os dados existentes.
    */
+
   const dataParaInterno = (data) => {
     if (!data) return "";
 
@@ -202,12 +215,14 @@ export default function App() {
     // DD/MM/AAAA
     if (/^\d{2}\/\d{2}\/\d{4}$/.test(valor)) {
       const [dia, mes, ano] = valor.split("/");
+
       return `${ano}-${mes}-${dia}`;
     }
 
     // DD-MM-AAAA
     if (/^\d{2}-\d{2}-\d{4}$/.test(valor)) {
       const [dia, mes, ano] = valor.split("-");
+
       return `${ano}-${mes}-${dia}`;
     }
 
@@ -228,6 +243,7 @@ export default function App() {
    * 1708     -> 17/08/
    * 17082026 -> 17/08/2026
    */
+
   const formatarInputData = (valor) => {
     const numeros = String(valor || "")
       .replace(/\D/g, "")
@@ -238,30 +254,40 @@ export default function App() {
     }
 
     if (numeros.length <= 4) {
-      return `${numeros.slice(0, 2)}/${numeros.slice(2)}`;
+      return `${numeros.slice(
+        0,
+        2
+      )}/${numeros.slice(2)}`;
     }
 
-    return `${numeros.slice(0, 2)}/${numeros.slice(
-      2,
-      4
-    )}/${numeros.slice(4, 8)}`;
+    return `${numeros.slice(
+      0,
+      2
+    )}/${numeros.slice(2, 4)}/${numeros.slice(4, 8)}`;
   };
 
   /*
    * Verifica se a data digitada realmente existe.
    */
+
   const dataValida = (data) => {
     if (!/^\d{2}\/\d{2}\/\d{4}$/.test(data)) {
       return false;
     }
 
-    const [dia, mes, ano] = data.split("/").map(Number);
+    const [dia, mes, ano] = data
+      .split("/")
+      .map(Number);
 
     if (mes < 1 || mes > 12) return false;
     if (dia < 1 || dia > 31) return false;
     if (ano < 1900 || ano > 3000) return false;
 
-    const d = new Date(ano, mes - 1, dia);
+    const d = new Date(
+      ano,
+      mes - 1,
+      dia
+    );
 
     return (
       d.getFullYear() === ano &&
@@ -273,8 +299,11 @@ export default function App() {
   /*
    * Timestamp para ordenação.
    */
+
   const obterTimestampData = (data) => {
-    if (!data) return Number.MAX_SAFE_INTEGER;
+    if (!data) {
+      return Number.MAX_SAFE_INTEGER;
+    }
 
     const valor = String(data).trim();
 
@@ -284,22 +313,30 @@ export default function App() {
 
     // AAAA-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
-      [ano, mes, dia] = valor.split("-").map(Number);
+      [ano, mes, dia] = valor
+        .split("-")
+        .map(Number);
     }
 
     // DD/MM/AAAA
     else if (/^\d{2}\/\d{2}\/\d{4}$/.test(valor)) {
-      [dia, mes, ano] = valor.split("/").map(Number);
+      [dia, mes, ano] = valor
+        .split("/")
+        .map(Number);
     }
 
     // DD-MM-AAAA
     else if (/^\d{2}-\d{2}-\d{4}$/.test(valor)) {
-      [dia, mes, ano] = valor.split("-").map(Number);
+      [dia, mes, ano] = valor
+        .split("-")
+        .map(Number);
     }
 
     // AAAA/MM/DD
     else if (/^\d{4}\/\d{2}\/\d{2}$/.test(valor)) {
-      [ano, mes, dia] = valor.split("/").map(Number);
+      [ano, mes, dia] = valor
+        .split("/")
+        .map(Number);
     }
 
     else {
@@ -310,7 +347,11 @@ export default function App() {
         : d.getTime();
     }
 
-    const d = new Date(ano, mes - 1, dia);
+    const d = new Date(
+      ano,
+      mes - 1,
+      dia
+    );
 
     return Number.isNaN(d.getTime())
       ? Number.MAX_SAFE_INTEGER
@@ -326,7 +367,9 @@ export default function App() {
       return "Nenhuma alteração registrada";
     }
 
-    const data = new Date(ultimaAtualizacao);
+    const data = new Date(
+      ultimaAtualizacao
+    );
 
     if (Number.isNaN(data.getTime())) {
       return "Nenhuma alteração registrada";
@@ -340,7 +383,10 @@ export default function App() {
   ========================================================= */
 
   const obterNumeroOrdenacao = (numero) => {
-    if (numero === undefined || numero === null) {
+    if (
+      numero === undefined ||
+      numero === null
+    ) {
       return Number.MAX_SAFE_INTEGER;
     }
 
@@ -356,7 +402,9 @@ export default function App() {
       return Number.MAX_SAFE_INTEGER;
     }
 
-    const numeroConvertido = Number(match[0]);
+    const numeroConvertido = Number(
+      match[0]
+    );
 
     return Number.isNaN(numeroConvertido)
       ? Number.MAX_SAFE_INTEGER
@@ -369,27 +417,42 @@ export default function App() {
 
   const ordenarItens = (lista) => {
     return [...lista].sort((a, b) => {
-      const numeroA = obterNumeroOrdenacao(a.numero);
-      const numeroB = obterNumeroOrdenacao(b.numero);
+      const numeroA =
+        obterNumeroOrdenacao(a.numero);
+
+      const numeroB =
+        obterNumeroOrdenacao(b.numero);
 
       if (numeroA !== numeroB) {
         return numeroA - numeroB;
       }
 
-      const dataA = obterTimestampData(a.data);
-      const dataB = obterTimestampData(b.data);
+      const dataA =
+        obterTimestampData(a.data);
+
+      const dataB =
+        obterTimestampData(b.data);
 
       if (dataA !== dataB) {
         return dataA - dataB;
       }
 
-      const codigoA = String(a.codigo || "").toLowerCase();
-      const codigoB = String(b.codigo || "").toLowerCase();
+      const codigoA = String(
+        a.codigo || ""
+      ).toLowerCase();
 
-      return codigoA.localeCompare(codigoB, "pt-BR", {
-        numeric: true,
-        sensitivity: "base",
-      });
+      const codigoB = String(
+        b.codigo || ""
+      ).toLowerCase();
+
+      return codigoA.localeCompare(
+        codigoB,
+        "pt-BR",
+        {
+          numeric: true,
+          sensitivity: "base",
+        }
+      );
     });
   };
 
@@ -428,7 +491,10 @@ export default function App() {
   ========================================================= */
 
   const salvarHistorico = (listaAtual) => {
-    setHistory((prev) => [...prev, listaAtual]);
+    setHistory((prev) => [
+      ...prev,
+      listaAtual,
+    ]);
   };
 
   const desfazer = () => {
@@ -437,11 +503,14 @@ export default function App() {
       return;
     }
 
-    const ultima = history[history.length - 1];
+    const ultima =
+      history[history.length - 1];
 
     setItems(ultima);
 
-    setHistory((prev) => prev.slice(0, -1));
+    setHistory((prev) =>
+      prev.slice(0, -1)
+    );
   };
 
   /* =========================================================
@@ -449,18 +518,25 @@ export default function App() {
   ========================================================= */
 
   const exportJSON = () => {
-    const data = JSON.stringify(items, null, 2);
+    const data = JSON.stringify(
+      items,
+      null,
+      2
+    );
 
     const blob = new Blob([data], {
       type: "application/json",
     });
 
-    const url = URL.createObjectURL(blob);
+    const url =
+      URL.createObjectURL(blob);
 
-    const a = document.createElement("a");
+    const a =
+      document.createElement("a");
 
     a.href = url;
     a.download = "dados.json";
+
     a.click();
 
     URL.revokeObjectURL(url);
@@ -479,7 +555,9 @@ export default function App() {
 
     reader.onload = (event) => {
       try {
-        const data = JSON.parse(event.target.result);
+        const data = JSON.parse(
+          event.target.result
+        );
 
         if (Array.isArray(data)) {
           salvarHistorico(items);
@@ -521,12 +599,15 @@ export default function App() {
   };
 
   const handleScan = (code) => {
-    const codigo = String(code || "").trim();
+    const codigo = String(
+      code || ""
+    ).trim();
 
     const found = items.find(
       (i) =>
         String(i.codigo || "")
-          .toLowerCase() === codigo.toLowerCase()
+          .toLowerCase() ===
+        codigo.toLowerCase()
     );
 
     if (found) {
@@ -535,12 +616,13 @@ export default function App() {
       setSearch(codigo);
       setTab("todos");
       setOpenItem(found.id);
-
       setScanning(false);
+
       return;
     }
 
     beep();
+
     handleNotFound(codigo);
   };
 
@@ -551,15 +633,28 @@ export default function App() {
   const handleSearchKey = (e) => {
     if (e.key !== "Enter") return;
 
-    const termo = search.trim().toLowerCase();
+    const termo = search
+      .trim()
+      .toLowerCase();
 
     if (!termo) return;
 
     const found = items.find((i) => {
-      const codigo = String(i.codigo || "").toLowerCase();
-      const nome = String(i.nome || "").toLowerCase();
-      const numero = String(i.numero || "").toLowerCase();
-      const tamanho = String(i.tamanho || "").toLowerCase();
+      const codigo = String(
+        i.codigo || ""
+      ).toLowerCase();
+
+      const nome = String(
+        i.nome || ""
+      ).toLowerCase();
+
+      const numero = String(
+        i.numero || ""
+      ).toLowerCase();
+
+      const tamanho = String(
+        i.tamanho || ""
+      ).toLowerCase();
 
       return (
         codigo.includes(termo) ||
@@ -570,7 +665,10 @@ export default function App() {
     });
 
     if (!found) {
-      handleNotFound(search.trim());
+      handleNotFound(
+        search.trim()
+      );
+
       return;
     }
 
@@ -585,23 +683,37 @@ export default function App() {
   ========================================================= */
 
   const addItem = () => {
-    if (!form.numero || !form.codigo) {
-      alert("Preencha Número e Código!");
+    if (
+      !form.numero ||
+      !form.codigo
+    ) {
+      alert(
+        "Preencha Número e Código!"
+      );
+
       return;
     }
 
-    const codigoLimpo = form.codigo.trim();
+    const codigoLimpo =
+      form.codigo.trim();
 
     if (!codigoLimpo) {
-      alert("Digite um código válido!");
+      alert(
+        "Digite um código válido!"
+      );
+
       return;
     }
 
     // Se houver data, valida o formato DD/MM/AAAA.
-    if (form.data && !dataValida(form.data)) {
+    if (
+      form.data &&
+      !dataValida(form.data)
+    ) {
       alert(
         "Digite uma data válida no formato DD/MM/AAAA."
       );
+
       return;
     }
 
@@ -609,12 +721,16 @@ export default function App() {
       (i) =>
         String(i.codigo || "")
           .trim()
-          .toLowerCase() === codigoLimpo.toLowerCase() &&
+          .toLowerCase() ===
+          codigoLimpo.toLowerCase() &&
         i.id !== editingId
     );
 
     if (jaExiste) {
-      alert("Esse item já existe!");
+      alert(
+        "Esse item já existe!"
+      );
+
       return;
     }
 
@@ -624,10 +740,13 @@ export default function App() {
      * Salva a data internamente como YYYY-MM-DD.
      * Assim, dados antigos e novos ficam compatíveis.
      */
+
     const formParaSalvar = {
       ...form,
       codigo: codigoLimpo,
-      data: dataParaInterno(form.data),
+      data: dataParaInterno(
+        form.data
+      ),
     };
 
     if (editingId) {
@@ -653,13 +772,36 @@ export default function App() {
         ...items,
         {
           ...formParaSalvar,
-          nome: tab === "uso" ? form.nome : "",
-          status: tab === "todos" ? "estoque" : tab,
-          perdido: tab === "perdidos",
+
+          nome:
+            tab === "uso"
+              ? form.nome
+              : "",
+
+          status:
+            tab === "todos"
+              ? "estoque"
+              : tab,
+
+          perdido:
+            tab === "perdidos",
+
           lastStatus:
-            tab === "perdidos" ? "estoque" : tab,
+            tab === "perdidos"
+              ? "estoque"
+              : tab,
+
           devolvidoArmario: false,
-          id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+
+          id:
+            typeof crypto !==
+              "undefined" &&
+            typeof crypto.randomUUID ===
+              "function"
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random()
+                  .toString(16)
+                  .slice(2)}`,
         },
       ]);
     }
@@ -686,13 +828,20 @@ export default function App() {
       items.map((i) => {
         if (i.id !== id) return i;
 
-        let novoStatus = "estoque";
+        let novoStatus =
+          "estoque";
 
-        if (i.status === "estoque") {
+        if (
+          i.status === "estoque"
+        ) {
           novoStatus = "lavagem";
-        } else if (i.status === "lavagem") {
+        } else if (
+          i.status === "lavagem"
+        ) {
           novoStatus = "uso";
-        } else if (i.status === "uso") {
+        } else if (
+          i.status === "uso"
+        ) {
           novoStatus = "estoque";
         }
 
@@ -729,7 +878,9 @@ export default function App() {
         return {
           ...i,
           perdido: false,
-          status: i.lastStatus || "estoque",
+          status:
+            i.lastStatus ||
+            "estoque",
         };
       })
     );
@@ -748,7 +899,8 @@ export default function App() {
 
         return {
           ...i,
-          devolvidoArmario: !i.devolvidoArmario,
+          devolvidoArmario:
+            !i.devolvidoArmario,
         };
       })
     );
@@ -763,7 +915,9 @@ export default function App() {
       numero: item.numero || "",
       codigo: item.codigo || "",
       tamanho: item.tamanho || "",
-      data: formatarData(item.data),
+      data: formatarData(
+        item.data
+      ),
       nome: item.nome || "",
     });
 
@@ -786,6 +940,10 @@ export default function App() {
 
   /* =========================================================
      EXCLUIR
+
+     O setItems abaixo gera um novo snapshot imediatamente.
+     O storage.js é responsável por garantir que esse snapshot
+     mais recente seja o último enviado ao Sentinel Database.
   ========================================================= */
 
   const removeItem = (id) => {
@@ -795,7 +953,13 @@ export default function App() {
 
     salvarHistorico(items);
 
-    setItems(items.filter((i) => i.id !== id));
+    setItems(
+      items.filter(
+        (i) => i.id !== id
+      )
+    );
+
+    setOpenItem(null);
   };
 
   /* =========================================================
@@ -804,12 +968,25 @@ export default function App() {
 
   const filtered = ordenarItens(
     items.filter((i) => {
-      const termo = search.trim().toLowerCase();
+      const termo = search
+        .trim()
+        .toLowerCase();
 
-      const codigo = String(i.codigo || "").toLowerCase();
-      const nome = String(i.nome || "").toLowerCase();
-      const numero = String(i.numero || "").toLowerCase();
-      const tamanho = String(i.tamanho || "").toLowerCase();
+      const codigo = String(
+        i.codigo || ""
+      ).toLowerCase();
+
+      const nome = String(
+        i.nome || ""
+      ).toLowerCase();
+
+      const numero = String(
+        i.numero || ""
+      ).toLowerCase();
+
+      const tamanho = String(
+        i.tamanho || ""
+      ).toLowerCase();
 
       const matchSearch =
         !termo ||
@@ -818,18 +995,29 @@ export default function App() {
         numero.includes(termo) ||
         tamanho.includes(termo);
 
-      if (!matchSearch) return false;
+      if (!matchSearch) {
+        return false;
+      }
 
       if (tab === "estoque") {
-        return i.status === "estoque" && !i.perdido;
+        return (
+          i.status === "estoque" &&
+          !i.perdido
+        );
       }
 
       if (tab === "lavagem") {
-        return i.status === "lavagem" && !i.perdido;
+        return (
+          i.status === "lavagem" &&
+          !i.perdido
+        );
       }
 
       if (tab === "uso") {
-        return i.status === "uso" && !i.perdido;
+        return (
+          i.status === "uso" &&
+          !i.perdido
+        );
       }
 
       if (tab === "perdidos") {
@@ -850,18 +1038,26 @@ export default function App() {
 
   const count = {
     estoque: items.filter(
-      (i) => i.status === "estoque" && !i.perdido
+      (i) =>
+        i.status === "estoque" &&
+        !i.perdido
     ).length,
 
     lavagem: items.filter(
-      (i) => i.status === "lavagem" && !i.perdido
+      (i) =>
+        i.status === "lavagem" &&
+        !i.perdido
     ).length,
 
     uso: items.filter(
-      (i) => i.status === "uso" && !i.perdido
+      (i) =>
+        i.status === "uso" &&
+        !i.perdido
     ).length,
 
-    perdidos: items.filter((i) => i.perdido).length,
+    perdidos: items.filter(
+      (i) => i.perdido
+    ).length,
 
     todos: items.length,
   };
@@ -873,17 +1069,27 @@ export default function App() {
   const calcularDataFinal = (data) => {
     if (!data) return "";
 
-    const interna = dataParaInterno(data);
+    const interna =
+      dataParaInterno(data);
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(interna)) {
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(
+        interna
+      )
+    ) {
       return "";
     }
 
-    const [ano, mes, dia] = interna
-      .split("-")
-      .map(Number);
+    const [ano, mes, dia] =
+      interna
+        .split("-")
+        .map(Number);
 
-    const d = new Date(ano, mes - 1, dia);
+    const d = new Date(
+      ano,
+      mes - 1,
+      dia
+    );
 
     if (Number.isNaN(d.getTime())) {
       return "";
@@ -893,20 +1099,33 @@ export default function App() {
 
     if (diaSemana === 1) {
       // Segunda -> Sexta
-      d.setDate(d.getDate() + 4);
+      d.setDate(
+        d.getDate() + 4
+      );
     } else if (diaSemana === 3) {
       // Quarta -> Segunda
-      d.setDate(d.getDate() + 5);
+      d.setDate(
+        d.getDate() + 5
+      );
     } else if (diaSemana === 5) {
       // Sexta -> Quarta
-      d.setDate(d.getDate() + 5);
+      d.setDate(
+        d.getDate() + 5
+      );
     } else {
       return "Funciona somente: Seg/Qua/Sex";
     }
 
-    const novoDia = String(d.getDate()).padStart(2, "0");
-    const novoMes = String(d.getMonth() + 1).padStart(2, "0");
-    const novoAno = d.getFullYear();
+    const novoDia = String(
+      d.getDate()
+    ).padStart(2, "0");
+
+    const novoMes = String(
+      d.getMonth() + 1
+    ).padStart(2, "0");
+
+    const novoAno =
+      d.getFullYear();
 
     return `${novoDia}/${novoMes}/${novoAno}`;
   };
@@ -915,16 +1134,33 @@ export default function App() {
      DATA/HORA PDF
   ========================================================= */
 
-  const formatarDataHoraPDF = (data) => {
+  const formatarDataHoraPDF = (
+    data
+  ) => {
     if (!data) return "";
 
-    const dia = String(data.getDate()).padStart(2, "0");
-    const mes = String(data.getMonth() + 1).padStart(2, "0");
-    const ano = data.getFullYear();
+    const dia = String(
+      data.getDate()
+    ).padStart(2, "0");
 
-    const horas = String(data.getHours()).padStart(2, "0");
-    const minutos = String(data.getMinutes()).padStart(2, "0");
-    const segundos = String(data.getSeconds()).padStart(2, "0");
+    const mes = String(
+      data.getMonth() + 1
+    ).padStart(2, "0");
+
+    const ano =
+      data.getFullYear();
+
+    const horas = String(
+      data.getHours()
+    ).padStart(2, "0");
+
+    const minutos = String(
+      data.getMinutes()
+    ).padStart(2, "0");
+
+    const segundos = String(
+      data.getSeconds()
+    ).padStart(2, "0");
 
     return `${dia}/${mes}/${ano} ${horas}:${minutos}:${segundos}`;
   };
@@ -933,7 +1169,9 @@ export default function App() {
      PDF
   ========================================================= */
 
-  const gerarPDF = (tipoRelatorio) => {
+  const gerarPDF = (
+    tipoRelatorio
+  ) => {
     if (!tipoRelatorio) return;
 
     setPdfLoading(true);
@@ -945,80 +1183,116 @@ export default function App() {
         let y = 15;
 
         const safe = (v) =>
-          v !== undefined && v !== null
+          v !== undefined &&
+          v !== null
             ? String(v)
             : "";
 
-        const estoque = ordenarItens(
-          items.filter(
-            (i) => i.status === "estoque" && !i.perdido
-          )
-        );
+        const estoque =
+          ordenarItens(
+            items.filter(
+              (i) =>
+                i.status ===
+                  "estoque" &&
+                !i.perdido
+            )
+          );
 
-        const lavagem = ordenarItens(
-          items.filter(
-            (i) => i.status === "lavagem" && !i.perdido
-          )
-        );
+        const lavagem =
+          ordenarItens(
+            items.filter(
+              (i) =>
+                i.status ===
+                  "lavagem" &&
+                !i.perdido
+            )
+          );
 
-        const uso = ordenarItens(
-          items.filter(
-            (i) => i.status === "uso" && !i.perdido
-          )
-        );
+        const uso =
+          ordenarItens(
+            items.filter(
+              (i) =>
+                i.status === "uso" &&
+                !i.perdido
+            )
+          );
 
-        const perdidos = ordenarItens(
-          items.filter((i) => i.perdido)
-        );
+        const perdidos =
+          ordenarItens(
+            items.filter(
+              (i) => i.perdido
+            )
+          );
 
-        const drawWatermark = () => {
-          try {
-            const gState = doc.GState({
-              opacity: 0.08,
-            });
+        const drawWatermark =
+          () => {
+            try {
+              const gState =
+                doc.GState({
+                  opacity: 0.08,
+                });
 
-            doc.setGState(gState);
+              doc.setGState(
+                gState
+              );
 
-            doc.setFontSize(30);
-            doc.setTextColor(0, 0, 0);
+              doc.setFontSize(30);
+              doc.setTextColor(
+                0,
+                0,
+                0
+              );
 
-            doc.text(
-              "Gustavo Henrique Ribeiro",
-              105,
-              150,
-              {
-                align: "center",
-                angle: 45,
-              }
+              doc.text(
+                "Gustavo Henrique Ribeiro",
+                105,
+                150,
+                {
+                  align: "center",
+                  angle: 45,
+                }
+              );
+
+              doc.setGState(
+                doc.GState({
+                  opacity: 1,
+                })
+              );
+            } catch {}
+
+            doc.setFontSize(10);
+            doc.setTextColor(
+              0,
+              0,
+              0
             );
+          };
 
-            doc.setGState(
-              doc.GState({
-                opacity: 1,
-              })
-            );
-          } catch {}
+        const verificarPagina =
+          () => {
+            if (y > 270) {
+              drawWatermark();
 
-          doc.setFontSize(10);
-          doc.setTextColor(0, 0, 0);
-        };
+              doc.addPage();
 
-        const verificarPagina = () => {
-          if (y > 270) {
-            drawWatermark();
-            doc.addPage();
+              y = 15;
 
-            y = 15;
+              drawWatermark();
+            }
+          };
 
-            drawWatermark();
-          }
-        };
-
-        const write = (title, list, type) => {
+        const write = (
+          title,
+          list,
+          type
+        ) => {
           verificarPagina();
 
           doc.setFontSize(14);
-          doc.setFont(undefined, "bold");
+          doc.setFont(
+            undefined,
+            "bold"
+          );
 
           doc.text(
             `${title} (${list.length})`,
@@ -1029,15 +1303,22 @@ export default function App() {
           y += 8;
 
           doc.setFontSize(9);
-          doc.setFont(undefined, "bold");
+          doc.setFont(
+            undefined,
+            "bold"
+          );
 
-          if (type === "lavagem") {
+          if (
+            type === "lavagem"
+          ) {
             doc.text(
               "Número / Código / Tamanho / Data final",
               10,
               y
             );
-          } else if (type === "uso") {
+          } else if (
+            type === "uso"
+          ) {
             doc.text(
               "Número / Código / Tamanho / Data / Nome / Devolvido?",
               10,
@@ -1053,48 +1334,93 @@ export default function App() {
 
           y += 6;
 
-          doc.setFont(undefined, "normal");
+          doc.setFont(
+            undefined,
+            "normal"
+          );
 
           list.forEach((i) => {
             verificarPagina();
 
             let linha = "";
 
-            if (type === "lavagem") {
-              const dataFinal = calcularDataFinal(i.data);
+            if (
+              type === "lavagem"
+            ) {
+              const dataFinal =
+                calcularDataFinal(
+                  i.data
+                );
 
               linha =
-                `${safe(i.numero)} / ` +
-                `${safe(i.codigo)} / ` +
-                `${safe(i.tamanho)} / ` +
-                `${safe(dataFinal)}`;
-            } else if (type === "uso") {
-              const devolvido = i.devolvidoArmario
-                ? "Sim"
-                : "Não";
+                `${safe(
+                  i.numero
+                )} / ` +
+                `${safe(
+                  i.codigo
+                )} / ` +
+                `${safe(
+                  i.tamanho
+                )} / ` +
+                `${safe(
+                  dataFinal
+                )}`;
+            } else if (
+              type === "uso"
+            ) {
+              const devolvido =
+                i.devolvidoArmario
+                  ? "Sim"
+                  : "Não";
 
               linha =
-                `${safe(i.numero)} / ` +
-                `${safe(i.codigo)} / ` +
-                `${safe(i.tamanho)} / ` +
-                `${safe(formatarData(i.data))} / ` +
-                `${safe(i.nome)} / ` +
+                `${safe(
+                  i.numero
+                )} / ` +
+                `${safe(
+                  i.codigo
+                )} / ` +
+                `${safe(
+                  i.tamanho
+                )} / ` +
+                `${safe(
+                  formatarData(
+                    i.data
+                  )
+                )} / ` +
+                `${safe(
+                  i.nome
+                )} / ` +
                 `${devolvido}`;
             } else {
               linha =
-                `${safe(i.numero)} / ` +
-                `${safe(i.codigo)} / ` +
-                `${safe(i.tamanho)}`;
+                `${safe(
+                  i.numero
+                )} / ` +
+                `${safe(
+                  i.codigo
+                )} / ` +
+                `${safe(
+                  i.tamanho
+                )}`;
             }
 
-            const linhas = doc.splitTextToSize(
-              linha,
-              185
+            const linhas =
+              doc.splitTextToSize(
+                linha,
+                185
+              );
+
+            doc.text(
+              linhas,
+              10,
+              y
             );
 
-            doc.text(linhas, 10, y);
-
-            y += 5 * linhas.length + 2;
+            y +=
+              5 *
+                linhas.length +
+              2;
           });
 
           y += 6;
@@ -1103,7 +1429,11 @@ export default function App() {
         drawWatermark();
 
         doc.setFontSize(18);
-        doc.setFont(undefined, "bold");
+
+        doc.setFont(
+          undefined,
+          "bold"
+        );
 
         doc.text(
           "RELATÓRIO DE MACACÕES",
@@ -1114,7 +1444,11 @@ export default function App() {
         y += 7;
 
         doc.setFontSize(9);
-        doc.setFont(undefined, "normal");
+
+        doc.setFont(
+          undefined,
+          "normal"
+        );
 
         doc.text(
           `Gerado em: ${formatarDataHoraPDF(
@@ -1126,7 +1460,10 @@ export default function App() {
 
         y += 10;
 
-        if (tipoRelatorio === "estoque") {
+        if (
+          tipoRelatorio ===
+          "estoque"
+        ) {
           write(
             "ESTOQUE",
             estoque,
@@ -1134,7 +1471,10 @@ export default function App() {
           );
         }
 
-        if (tipoRelatorio === "lavagem") {
+        if (
+          tipoRelatorio ===
+          "lavagem"
+        ) {
           write(
             "LAVAGEM",
             lavagem,
@@ -1142,7 +1482,9 @@ export default function App() {
           );
         }
 
-        if (tipoRelatorio === "uso") {
+        if (
+          tipoRelatorio === "uso"
+        ) {
           write(
             "EM USO",
             uso,
@@ -1150,7 +1492,10 @@ export default function App() {
           );
         }
 
-        if (tipoRelatorio === "perdidos") {
+        if (
+          tipoRelatorio ===
+          "perdidos"
+        ) {
           write(
             "PERDIDOS",
             perdidos,
@@ -1158,7 +1503,10 @@ export default function App() {
           );
         }
 
-        if (tipoRelatorio === "todos") {
+        if (
+          tipoRelatorio ===
+          "todos"
+        ) {
           write(
             "ESTOQUE",
             estoque,
@@ -1205,10 +1553,14 @@ export default function App() {
   ========================================================= */
 
   return (
-    <div className={`app ${dark ? "dark" : ""}`}>
+    <div
+      className={`app ${
+        dark ? "dark" : ""
+      }`}
+    >
       <div className="app-shell">
-
         {/* HEADER */}
+
         <header className="header">
           <div>
             <div className="eyebrow">
@@ -1234,7 +1586,9 @@ export default function App() {
 
           <button
             className="theme-btn"
-            onClick={() => setDark(!dark)}
+            onClick={() =>
+              setDark(!dark)
+            }
           >
             {dark ? "☀️" : "🌙"}
 
@@ -1247,6 +1601,7 @@ export default function App() {
         </header>
 
         {/* BARRA PRINCIPAL */}
+
         <div className="top-bar">
           <button
             className="action-btn undo-btn"
@@ -1264,9 +1619,13 @@ export default function App() {
               placeholder="Pesquisar por código, nome, número ou tamanho..."
               value={search}
               onChange={(e) =>
-                setSearch(e.target.value)
+                setSearch(
+                  e.target.value
+                )
               }
-              onKeyDown={handleSearchKey}
+              onKeyDown={
+                handleSearchKey
+              }
             />
 
             {search && (
@@ -1284,7 +1643,9 @@ export default function App() {
 
           <button
             className="action-btn scanner-btn"
-            onClick={() => setScanning(true)}
+            onClick={() =>
+              setScanning(true)
+            }
             title="Escanear código"
           >
             📷
@@ -1292,7 +1653,9 @@ export default function App() {
 
           <button
             className="action-btn pdf-btn"
-            onClick={() => setShowPDFModal(true)}
+            onClick={() =>
+              setShowPDFModal(true)
+            }
           >
             📄 <span>PDF</span>
           </button>
@@ -1308,7 +1671,9 @@ export default function App() {
             className="action-btn import-btn"
             onClick={() =>
               document
-                .getElementById("import-json")
+                .getElementById(
+                  "import-json"
+                )
                 .click()
             }
           >
@@ -1319,73 +1684,119 @@ export default function App() {
             id="import-json"
             type="file"
             accept="application/json"
-            style={{ display: "none" }}
+            style={{
+              display: "none",
+            }}
             onChange={importJSON}
           />
         </div>
 
         {/* ABAS */}
+
         <div className="tabs">
           <button
             className={`tab-btn estoque ${
-              tab === "estoque" ? "active" : ""
+              tab === "estoque"
+                ? "active"
+                : ""
             }`}
-            onClick={() => setTab("estoque")}
+            onClick={() =>
+              setTab("estoque")
+            }
           >
-            <span className="tab-icon">📦</span>
+            <span className="tab-icon">
+              📦
+            </span>
+
             <span>Estoque</span>
+
             <b>{count.estoque}</b>
           </button>
 
           <button
             className={`tab-btn uso ${
-              tab === "uso" ? "active" : ""
+              tab === "uso"
+                ? "active"
+                : ""
             }`}
-            onClick={() => setTab("uso")}
+            onClick={() =>
+              setTab("uso")
+            }
           >
-            <span className="tab-icon">👤</span>
+            <span className="tab-icon">
+              👤
+            </span>
+
             <span>Em Uso</span>
+
             <b>{count.uso}</b>
           </button>
 
           <button
             className={`tab-btn lavagem ${
-              tab === "lavagem" ? "active" : ""
+              tab === "lavagem"
+                ? "active"
+                : ""
             }`}
-            onClick={() => setTab("lavagem")}
+            onClick={() =>
+              setTab("lavagem")
+            }
           >
-            <span className="tab-icon">🧺</span>
+            <span className="tab-icon">
+              🧺
+            </span>
+
             <span>Lavagem</span>
+
             <b>{count.lavagem}</b>
           </button>
 
           <button
             className={`tab-btn perdidos ${
-              tab === "perdidos" ? "active" : ""
+              tab === "perdidos"
+                ? "active"
+                : ""
             }`}
-            onClick={() => setTab("perdidos")}
+            onClick={() =>
+              setTab("perdidos")
+            }
           >
-            <span className="tab-icon">⚠️</span>
+            <span className="tab-icon">
+              ⚠️
+            </span>
+
             <span>Perdidos</span>
+
             <b>{count.perdidos}</b>
           </button>
 
           <button
             className={`tab-btn todos ${
-              tab === "todos" ? "active" : ""
+              tab === "todos"
+                ? "active"
+                : ""
             }`}
-            onClick={() => setTab("todos")}
+            onClick={() =>
+              setTab("todos")
+            }
           >
-            <span className="tab-icon">📋</span>
+            <span className="tab-icon">
+              📋
+            </span>
+
             <span>Todos</span>
+
             <b>{count.todos}</b>
           </button>
         </div>
 
         {/* NOVO MACACÃO */}
+
         <button
           className="add-btn"
-          onClick={() => setShowForm(!showForm)}
+          onClick={() =>
+            setShowForm(!showForm)
+          }
         >
           <span className="add-icon">
             {showForm ? "−" : "+"}
@@ -1397,12 +1808,15 @@ export default function App() {
         </button>
 
         {/* FORMULÁRIO */}
+
         {showForm && (
           <div className="form">
             <div className="form-header">
               <div>
                 <span className="form-eyebrow">
-                  {editingId ? "EDIÇÃO" : "CADASTRO"}
+                  {editingId
+                    ? "EDIÇÃO"
+                    : "CADASTRO"}
                 </span>
 
                 <h2>
@@ -1433,7 +1847,8 @@ export default function App() {
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      numero: e.target.value,
+                      numero:
+                        e.target.value,
                     })
                   }
                 />
@@ -1449,7 +1864,8 @@ export default function App() {
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        codigo: e.target.value,
+                        codigo:
+                          e.target.value,
                       })
                     }
                   />
@@ -1474,20 +1890,15 @@ export default function App() {
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      tamanho: e.target.value,
+                      tamanho:
+                        e.target.value,
                     })
                   }
                 />
               </div>
 
-              {/* =================================================
-                  DATA CORRIGIDA
-                  
-                  NÃO USAMOS MAIS type="date".
-                  
-                  Agora aparece:
-                  DD/MM/AAAA
-              ================================================= */}
+              {/* DATA */}
+
               <div className="field">
                 <label>Data</label>
 
@@ -1530,7 +1941,8 @@ export default function App() {
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        nome: e.target.value,
+                        nome:
+                          e.target.value,
                       })
                     }
                   />
@@ -1559,12 +1971,14 @@ export default function App() {
         )}
 
         {/* INDICADOR DA PESQUISA */}
+
         {search.trim() && (
           <div className="search-result-info">
             <span>🔎</span>
 
             <span>
               Pesquisando por:
+
               <strong>
                 {" "}
                 "{search}"
@@ -1573,12 +1987,15 @@ export default function App() {
 
             <span className="result-count">
               {filtered.length} resultado
-              {filtered.length !== 1 ? "s" : ""}
+              {filtered.length !== 1
+                ? "s"
+                : ""}
             </span>
           </div>
         )}
 
         {/* LISTA */}
+
         <div className="list">
           {filtered.length === 0 ? (
             <div className="empty-state">
@@ -1617,6 +2034,7 @@ export default function App() {
                 }`}
               >
                 {/* PERDIDO */}
+
                 <button
                   className={`item-action p ${
                     item.perdido
@@ -1636,8 +2054,10 @@ export default function App() {
                 </button>
 
                 {/* ARMÁRIO */}
+
                 {tab === "uso" &&
-                  item.status === "uso" &&
+                  item.status ===
+                    "uso" &&
                   !item.perdido && (
                     <button
                       className={`item-action armario ${
@@ -1661,11 +2081,13 @@ export default function App() {
                   )}
 
                 {/* INFORMAÇÕES */}
+
                 <div
                   className="item-main"
                   onClick={() =>
                     setOpenItem(
-                      openItem === item.id
+                      openItem ===
+                        item.id
                         ? null
                         : item.id
                     )
@@ -1683,7 +2105,9 @@ export default function App() {
                     </div>
 
                     <span
-                      className={`status-pill ${item.status} ${
+                      className={`status-pill ${
+                        item.status
+                      } ${
                         item.perdido
                           ? "lost"
                           : ""
@@ -1691,7 +2115,8 @@ export default function App() {
                     >
                       {item.perdido
                         ? "PERDIDO"
-                        : item.status === "uso"
+                        : item.status ===
+                          "uso"
                         ? "EM USO"
                         : item.status.toUpperCase()}
                     </span>
@@ -1699,53 +2124,77 @@ export default function App() {
 
                   <div className="item-summary">
                     <span>
-                      <small>Código</small>
+                      <small>
+                        Código
+                      </small>
+
                       {item.codigo}
                     </span>
 
                     <span>
-                      <small>Tamanho</small>
-                      {item.tamanho || "—"}
+                      <small>
+                        Tamanho
+                      </small>
+
+                      {item.tamanho ||
+                        "—"}
                     </span>
 
-                    {item.status === "uso" &&
+                    {item.status ===
+                      "uso" &&
                       item.nome && (
                         <span>
-                          <small>Nome</small>
+                          <small>
+                            Nome
+                          </small>
+
                           {item.nome}
                         </span>
                       )}
                   </div>
 
                   {/* DETALHES */}
-                  {openItem === item.id && (
+
+                  {openItem ===
+                    item.id && (
                     <div className="item-details">
                       <div className="detail">
-                        <span>Código</span>
+                        <span>
+                          Código
+                        </span>
 
                         <strong>
-                          {item.codigo || "—"}
+                          {item.codigo ||
+                            "—"}
                         </strong>
                       </div>
 
                       <div className="detail">
-                        <span>Número</span>
+                        <span>
+                          Número
+                        </span>
 
                         <strong>
-                          {item.numero || "—"}
+                          {item.numero ||
+                            "—"}
                         </strong>
                       </div>
 
                       <div className="detail">
-                        <span>Tamanho</span>
+                        <span>
+                          Tamanho
+                        </span>
 
                         <strong>
-                          {item.tamanho || "—"}
+                          {item.tamanho ||
+                            "—"}
                         </strong>
                       </div>
 
                       <div className="detail">
-                        <span>Data</span>
+                        <span>
+                          Data
+                        </span>
 
                         <strong>
                           {item.data
@@ -1756,13 +2205,17 @@ export default function App() {
                         </strong>
                       </div>
 
-                      {item.status === "uso" && (
+                      {item.status ===
+                        "uso" && (
                         <>
                           <div className="detail full-detail">
-                            <span>Nome</span>
+                            <span>
+                              Nome
+                            </span>
 
                             <strong>
-                              {item.nome || "—"}
+                              {item.nome ||
+                                "—"}
                             </strong>
                           </div>
 
@@ -1806,25 +2259,34 @@ export default function App() {
                 </div>
 
                 {/* STATUS */}
+
                 {!item.perdido && (
                   <button
-                    className={`status-change ${item.status}`}
+                    className={`status-change ${
+                      item.status
+                    }`}
                     onClick={() =>
-                      toggleStatus(item.id)
+                      toggleStatus(
+                        item.id
+                      )
                     }
                     title="Alterar status"
                   >
-                    {item.status === "estoque"
+                    {item.status ===
+                    "estoque"
                       ? "📦 Estoque"
-                      : item.status === "lavagem"
+                      : item.status ===
+                        "lavagem"
                       ? "🧺 Lavagem"
-                      : item.status === "uso"
+                      : item.status ===
+                        "uso"
                       ? "👤 Em Uso"
                       : item.status}
                   </button>
                 )}
 
                 {/* EDITAR */}
+
                 <button
                   className="item-action edit"
                   onClick={() =>
@@ -1836,10 +2298,13 @@ export default function App() {
                 </button>
 
                 {/* EXCLUIR */}
+
                 <button
                   className="item-action delete"
                   onClick={() =>
-                    removeItem(item.id)
+                    removeItem(
+                      item.id
+                    )
                   }
                   title="Excluir"
                 >
@@ -1885,7 +2350,9 @@ export default function App() {
             <div className="pdf-options">
               <button
                 onClick={() =>
-                  gerarPDF("estoque")
+                  gerarPDF(
+                    "estoque"
+                  )
                 }
               >
                 <span>📦</span>
@@ -1903,7 +2370,9 @@ export default function App() {
 
               <button
                 onClick={() =>
-                  gerarPDF("lavagem")
+                  gerarPDF(
+                    "lavagem"
+                  )
                 }
               >
                 <span>🧺</span>
@@ -1939,7 +2408,9 @@ export default function App() {
 
               <button
                 onClick={() =>
-                  gerarPDF("perdidos")
+                  gerarPDF(
+                    "perdidos"
+                  )
                 }
               >
                 <span>⚠️</span>

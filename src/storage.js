@@ -6,25 +6,42 @@ const LAST_SYNC_KEY = "estoque_app_last_sync";
 
 /*
  * =========================================================
- * FILA DE SINCRONIZAÇÃO
+ * SISTEMA DE SALVAMENTO
  *
- * Impede que dois PUTs aconteçam ao mesmo tempo.
+ * O problema anterior era:
  *
- * Isso evita uma alteração antiga terminar depois de uma
- * alteração nova e ressuscitar dados excluídos.
+ * PUT estado antigo
+ * PUT estado novo
+ * PUT estado mais novo
+ *
+ * Todos ficavam na fila.
+ *
+ * Agora usamos "latest snapshot wins":
+ *
+ * - apenas UMA requisição pode estar sendo enviada;
+ * - enquanto ela estiver sendo enviada, guardamos somente
+ *   o estado MAIS RECENTE;
+ * - quando a requisição terminar, enviamos o último estado.
+ *
+ * Isso impede que snapshots antigos fiquem esperando na fila
+ * e ressuscitem itens que o usuário acabou de excluir.
  * =========================================================
  */
 
-let filaSalvar = Promise.resolve();
+let salvamentoEmAndamento = false;
+let ultimoSnapshot = null;
 
-function executarNaFila(operacao) {
-  const proxima = filaSalvar
-    .catch(() => {})
-    .then(() => operacao());
+let resolversSalvamento = [];
 
-  filaSalvar = proxima.catch(() => {});
-
-  return proxima;
+/*
+ * Compara dois snapshots.
+ */
+function snapshotsIguais(a, b) {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
 }
 
 /*
@@ -38,6 +55,7 @@ function saveLocalItems(items) {
     console.error(
       "Tentativa de salvar no cache algo que não é uma lista."
     );
+
     return false;
   }
 
@@ -226,6 +244,135 @@ async function request(url, options = {}) {
 
 /*
  * =========================================================
+ * TRABALHADOR DE SALVAMENTO
+ * =========================================================
+ *
+ * Regra:
+ *
+ * 1. pega o snapshot mais recente;
+ * 2. envia;
+ * 3. verifica se apareceu outro snapshot enquanto
+ *    estava enviando;
+ * 4. se apareceu, envia SOMENTE o mais recente;
+ * 5. continua até não existir mais alteração pendente.
+ *
+ * IMPORTANTE:
+ *
+ * Se o usuário apagar um item enquanto um PUT antigo está
+ * sendo enviado, a exclusão fica esperando.
+ *
+ * Assim que o PUT antigo termina, o PUT com a exclusão
+ * é enviado depois.
+ *
+ * Portanto o estado final do banco será o estado mais novo.
+ * =========================================================
+ */
+
+async function processarSalvamentos() {
+  if (salvamentoEmAndamento) {
+    return;
+  }
+
+  salvamentoEmAndamento = true;
+
+  let ultimoResultado = true;
+
+  try {
+    while (ultimoSnapshot !== null) {
+      const snapshot = ultimoSnapshot;
+
+      /*
+       * Limpa antes de enviar.
+       *
+       * Se uma alteração acontecer durante o PUT,
+       * saveItems() colocará o novo snapshot novamente
+       * em ultimoSnapshot.
+       */
+      ultimoSnapshot = null;
+
+      try {
+        await request(API_URL, {
+          method: "PUT",
+
+          body: JSON.stringify({
+            items: snapshot,
+          }),
+        });
+
+        /*
+         * Só removemos a pendência se ela ainda representa
+         * exatamente o snapshot que acabamos de enviar.
+         */
+        const pendenteAtual = loadPendingSync();
+
+        if (
+          Array.isArray(pendenteAtual) &&
+          snapshotsIguais(
+            pendenteAtual,
+            snapshot
+          )
+        ) {
+          clearPendingSync();
+        }
+
+        saveLocalItems(snapshot);
+        setLastSync();
+
+        ultimoResultado = true;
+      } catch (error) {
+        console.warn(
+          "Banco indisponível. Alteração mantida localmente:",
+          error
+        );
+
+        /*
+         * Se não conseguiu enviar, preservamos o snapshot.
+         *
+         * Mas se apareceu uma alteração mais nova enquanto
+         * estávamos tentando enviar, ela tem prioridade.
+         */
+        if (ultimoSnapshot === null) {
+          ultimoSnapshot = snapshot;
+        }
+
+        ultimoResultado = false;
+
+        /*
+         * Não ficamos tentando infinitamente.
+         */
+        break;
+      }
+    }
+  } finally {
+    salvamentoEmAndamento = false;
+
+    /*
+     * Resolve as chamadas que estavam aguardando.
+     */
+    const resolvers = resolversSalvamento;
+    resolversSalvamento = [];
+
+    resolvers.forEach((resolve) => {
+      resolve(ultimoResultado);
+    });
+
+    /*
+     * Segurança:
+     *
+     * se uma alteração entrou exatamente durante a
+     * finalização, inicia novamente.
+     */
+    if (
+      ultimoSnapshot !== null &&
+      !salvamentoEmAndamento
+    ) {
+      processarSalvamentos();
+    }
+  }
+}
+
+/*
+ * =========================================================
  * CARREGAR
  * =========================================================
  */
@@ -235,9 +382,6 @@ export const loadItems = async () => {
 
   try {
     /*
-     * PRIMEIRO:
-     * consulta o banco central.
-     *
      * O banco central é a fonte oficial.
      */
     const data = await request(API_URL);
@@ -262,15 +406,11 @@ export const loadItems = async () => {
     /*
      * IMPORTANTE:
      *
-     * Se o servidor respondeu []:
+     * Se o banco responder []:
      *
-     * NÃO usamos o cache antigo.
-     * NÃO reenviamos o cache.
+     * [] é o estado verdadeiro do banco.
      *
-     * [] significa que o banco central está vazio.
-     *
-     * Isso impede que uma exclusão seja desfeita pelo
-     * cache antigo do navegador.
+     * Nunca restauramos o cache antigo.
      */
     saveLocalItems(data.items);
 
@@ -286,8 +426,8 @@ export const loadItems = async () => {
     );
 
     /*
-     * Se o servidor estiver indisponível,
-     * aí sim podemos trabalhar com o cache local.
+     * Só usamos cache se o servidor realmente estiver
+     * indisponível.
      */
     if (localItems.length > 0) {
       console.warn(
@@ -297,10 +437,6 @@ export const loadItems = async () => {
       return localItems;
     }
 
-    /*
-     * Sem servidor e sem cache:
-     * não inventamos um estoque vazio.
-     */
     throw error;
   }
 };
@@ -321,68 +457,43 @@ export const saveItems = async (items) => {
   }
 
   /*
-   * Salva imediatamente no dispositivo.
+   * Salva imediatamente o estado atual no navegador.
    */
   saveLocalItems(items);
 
   /*
-   * Guarda a versão mais recente como pendência.
+   * Este passa a ser SEMPRE o snapshot mais recente.
+   *
+   * Se havia outro esperando, ele é substituído.
    */
+  ultimoSnapshot = items;
+
   savePendingSync(items);
 
   /*
-   * IMPORTANTE:
+   * Se já existe uma requisição acontecendo,
+   * não criamos outra fila.
    *
-   * Todas as gravações entram em uma fila.
-   *
-   * Assim:
-   *
-   * alteração 1
-   *     ↓
-   * alteração 2
-   *     ↓
-   * alteração 3
-   *
-   * nunca ficam disputando entre si.
+   * A requisição atual terminará e depois enviará
+   * ultimoSnapshot.
    */
-  return executarNaFila(async () => {
-    try {
-      await request(API_URL, {
-        method: "PUT",
+  if (salvamentoEmAndamento) {
+    return new Promise((resolve) => {
+      resolversSalvamento.push(resolve);
+    });
+  }
 
-        body: JSON.stringify({
-          items,
-        }),
-      });
+  /*
+   * Inicia o trabalhador.
+   */
+  processarSalvamentos();
 
-      /*
-       * Só apagamos a pendência se a mesma versão
-       * que estamos enviando ainda for a versão atual.
-       *
-       * Se o usuário fez outra alteração enquanto esta
-       * estava sendo enviada, mantemos a nova pendência.
-       */
-      const pendenteAtual = loadPendingSync();
-
-      if (
-        Array.isArray(pendenteAtual) &&
-        JSON.stringify(pendenteAtual) ===
-          JSON.stringify(items)
-      ) {
-        clearPendingSync();
-      }
-
-      setLastSync();
-
-      return true;
-    } catch (error) {
-      console.warn(
-        "Banco indisponível. Alteração mantida localmente:",
-        error
-      );
-
-      return false;
-    }
+  /*
+   * Retorna uma Promise que termina quando o ciclo
+   * de salvamento atual terminar.
+   */
+  return new Promise((resolve) => {
+    resolversSalvamento.push(resolve);
   });
 };
 
@@ -402,49 +513,29 @@ export const syncPending = async () => {
     };
   }
 
-  return executarNaFila(async () => {
-    try {
-      await request(API_URL, {
-        method: "PUT",
+  const sucesso = await saveItems(pending);
 
-        body: JSON.stringify({
-          items: pending,
-        }),
-      });
+  if (sucesso) {
+    const atual = loadPendingSync();
 
-      /*
-       * Só limpamos se a pendência ainda for a mesma.
-       */
-      const pendenteAtual = loadPendingSync();
-
-      if (
-        Array.isArray(pendenteAtual) &&
-        JSON.stringify(pendenteAtual) ===
-          JSON.stringify(pending)
-      ) {
-        clearPendingSync();
-        saveLocalItems(pending);
-      }
-
-      setLastSync();
-
-      return {
-        synced: true,
-        hadPending: true,
-        items: pending,
-      };
-    } catch (error) {
-      console.warn(
-        "Ainda não foi possível sincronizar:",
-        error
-      );
-
-      return {
-        synced: false,
-        hadPending: true,
-      };
+    if (
+      Array.isArray(atual) &&
+      snapshotsIguais(atual, pending)
+    ) {
+      clearPendingSync();
     }
-  });
+
+    return {
+      synced: true,
+      hadPending: true,
+      items: pending,
+    };
+  }
+
+  return {
+    synced: false,
+    hadPending: true,
+  };
 };
 
 /*
@@ -457,9 +548,7 @@ export const checkConnection = async () => {
   try {
     const data = await request(API_URL);
 
-    return (
-      Array.isArray(data?.items)
-    );
+    return Array.isArray(data?.items);
   } catch {
     return false;
   }
