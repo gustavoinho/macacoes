@@ -21,12 +21,14 @@ async function databaseRequest(endpoint, options = {}) {
 
   const text = await response.text();
 
-  let data = {};
+  let data;
 
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
-    data = { raw: text };
+    throw new Error(
+      `Resposta inválida do Sentinel Database: ${text}`
+    );
   }
 
   if (!response.ok) {
@@ -39,38 +41,74 @@ async function databaseRequest(endpoint, options = {}) {
   return data;
 }
 
-function normalizeRecord(record) {
-  if (!record || typeof record !== "object") {
-    return null;
+function extractItems(result) {
+  if (!result) {
+    return [];
   }
 
-  let data = record.data;
+  /*
+   * O Sentinel pode retornar:
+   *
+   * {
+   *   "records": [...]
+   * }
+   *
+   * ou diretamente:
+   *
+   * [...]
+   */
 
-  if (typeof data === "string") {
-    try {
-      data = JSON.parse(data);
-    } catch {
-      return null;
+  const records = Array.isArray(result)
+    ? result
+    : Array.isArray(result.records)
+      ? result.records
+      : [];
+
+  const items = [];
+
+  for (const record of records) {
+    if (!record) {
+      continue;
+    }
+
+    let data = record.data;
+
+    /*
+     * O campo data pode vir como JSON string.
+     */
+    if (typeof data === "string") {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        continue;
+      }
+    }
+
+    if (data && typeof data === "object") {
+      items.push(data);
     }
   }
 
-  return data && typeof data === "object"
-    ? data
-    : null;
+  return items;
 }
 
 export default async (request) => {
   try {
+    /*
+     * =========================
+     * GET
+     * =========================
+     *
+     * Busca tudo do Sentinel Database.
+     */
     if (request.method === "GET") {
       const result = await databaseRequest("/api/records");
 
-      const records = Array.isArray(result?.records)
-        ? result.records
-        : [];
+      const items = extractItems(result);
 
-      const items = records
-        .map(normalizeRecord)
-        .filter(Boolean);
+      console.log(
+        `Sentinel Database retornou ${items.length} itens.`
+      );
 
       return new Response(
         JSON.stringify({
@@ -81,13 +119,22 @@ export default async (request) => {
           status: 200,
           headers: {
             "Content-Type": "application/json",
+            "Cache-Control": "no-store",
           },
         }
       );
     }
 
+    /*
+     * =========================
+     * PUT
+     * =========================
+     *
+     * Salva o snapshot completo do estoque.
+     */
     if (request.method === "PUT") {
       const body = await request.json();
+
       const items = body?.items;
 
       if (!Array.isArray(items)) {
@@ -105,13 +152,20 @@ export default async (request) => {
         );
       }
 
+      /*
+       * Primeiro buscamos os registros atuais.
+       */
       const current = await databaseRequest("/api/records");
 
-      const records = Array.isArray(current?.records)
-        ? current.records
-        : [];
+      const records = Array.isArray(current)
+        ? current
+        : Array.isArray(current?.records)
+          ? current.records
+          : [];
 
-      // Remove o snapshot antigo.
+      /*
+       * Apaga os registros antigos.
+       */
       for (const record of records) {
         if (record?.id != null) {
           await databaseRequest(
@@ -123,7 +177,9 @@ export default async (request) => {
         }
       }
 
-      // Grava o novo snapshot.
+      /*
+       * Grava os registros novos.
+       */
       for (const item of items) {
         await databaseRequest("/api/records", {
           method: "POST",
@@ -132,6 +188,10 @@ export default async (request) => {
           }),
         });
       }
+
+      console.log(
+        `Sentinel Database recebeu ${items.length} itens.`
+      );
 
       return new Response(
         JSON.stringify({
@@ -147,6 +207,11 @@ export default async (request) => {
       );
     }
 
+    /*
+     * =========================
+     * OUTROS MÉTODOS
+     * =========================
+     */
     return new Response(
       JSON.stringify({
         success: false,
@@ -161,7 +226,10 @@ export default async (request) => {
     );
 
   } catch (error) {
-    console.error("Erro na Function estoque:", error);
+    console.error(
+      "Erro na Function estoque:",
+      error
+    );
 
     return new Response(
       JSON.stringify({
