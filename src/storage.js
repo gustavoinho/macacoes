@@ -375,15 +375,42 @@ async function processarSalvamentos() {
  * =========================================================
  * CARREGAR
  * =========================================================
+ *
+ * CORREÇÃO IMPORTANTE:
+ *
+ * Antes, esta função buscava o servidor e sobrescrevia
+ * QUALQUER coisa local, mesmo que existisse uma alteração
+ * pendente (feita offline, ou que falhou ao enviar). Isso
+ * fazia com que, ao recarregar a página, uma alteração do
+ * usuário fosse silenciosamente apagada e substituída pela
+ * versão antiga do servidor.
+ *
+ * Agora: se existe uma pendência não confirmada, tentamos
+ * reenviá-la ANTES de confiar no servidor. Só usamos o dado
+ * do servidor quando não há nenhuma alteração local à espera
+ * de ser sincronizada.
+ * =========================================================
  */
 
 export const loadItems = async () => {
   const localItems = loadLocalItems();
+  const pending = loadPendingSync();
+
+  if (pending) {
+    console.warn(
+      "Existe uma alteração pendente de sincronização. Tentando reenviar antes de carregar o servidor..."
+    );
+
+    // Reaproveita a fila de salvamento normal.
+    await saveItems(pending);
+
+    // Independentemente do resultado, a versão "pending" é
+    // a mais recente que o usuário produziu neste dispositivo
+    // — nunca a descartamos aqui.
+    return pending;
+  }
 
   try {
-    /*
-     * O banco central é a fonte oficial.
-     */
     const data = await request(API_URL);
 
     if (
@@ -562,4 +589,111 @@ export const checkConnection = async () => {
 
 export const hasPendingSync = () => {
   return Boolean(loadPendingSync());
+};
+
+/*
+ * =========================================================
+ * SINCRONIZAÇÃO ENTRE DISPOSITIVOS (POLLING)
+ * =========================================================
+ *
+ * Este é o pedaço que faltava.
+ *
+ * Sem ele, o app só buscava o servidor UMA vez, quando a
+ * página abria. Resultado, na prática:
+ *
+ *   1. Você abre o app no celular e no notebook.
+ *   2. Altera algo no celular. Vai para o servidor certinho.
+ *   3. O notebook continua com a lista antiga na memória,
+ *      porque nunca foi avisado da mudança.
+ *   4. Você mexe em qualquer coisa no notebook (mesmo algo
+ *      pequeno, tipo marcar "devolvido ao armário").
+ *   5. O notebook reenvia a LISTA INTEIRA que ele tinha —
+ *      desatualizada — e apaga a alteração feita no celular.
+ *
+ * startAutoSync busca o servidor periodicamente (a cada
+ * `intervalMs`, e também quando a aba volta a ficar visível
+ * ou em foco) e chama `onUpdate(items)` sempre que encontra
+ * uma versão diferente da que está salva localmente.
+ *
+ * Ele só faz essa busca quando NÃO há nada pendente de envio
+ * neste dispositivo — assim nunca sobrescreve, no meio do
+ * caminho, uma alteração local que ainda não chegou ao
+ * servidor.
+ *
+ * Uso (no componente React):
+ *
+ *   useEffect(() => {
+ *     if (!loaded) return;
+ *     const parar = startAutoSync((novosItens) => {
+ *       setItems(novosItens);
+ *     });
+ *     return parar; // limpa o intervalo ao desmontar
+ *   }, [loaded]);
+ * =========================================================
+ */
+
+export const startAutoSync = (onUpdate, intervalMs = 4000) => {
+  let parado = false;
+  let emExecucao = false;
+
+  const tick = async () => {
+    if (parado || emExecucao) return;
+
+    // Nunca busca o servidor enquanto houver um envio em
+    // andamento ou uma alteração local ainda não confirmada.
+    if (salvamentoEmAndamento || loadPendingSync()) {
+      return;
+    }
+
+    emExecucao = true;
+
+    try {
+      const data = await request(API_URL);
+
+      if (
+        !parado &&
+        Array.isArray(data?.items)
+      ) {
+        const atual = loadLocalItems();
+
+        if (!snapshotsIguais(atual, data.items)) {
+          saveLocalItems(data.items);
+          setLastSync();
+          onUpdate(data.items);
+        }
+      }
+    } catch {
+      // Falha silenciosa — tenta de novo no próximo ciclo.
+    } finally {
+      emExecucao = false;
+    }
+  };
+
+  const id = setInterval(tick, intervalMs);
+
+  const aoFicarVisivel = () => {
+    if (document.visibilityState === "visible") {
+      tick();
+    }
+  };
+
+  document.addEventListener(
+    "visibilitychange",
+    aoFicarVisivel
+  );
+
+  window.addEventListener("focus", tick);
+
+  // Primeira verificação assim que ativado.
+  tick();
+
+  return () => {
+    parado = true;
+    clearInterval(id);
+    document.removeEventListener(
+      "visibilitychange",
+      aoFicarVisivel
+    );
+    window.removeEventListener("focus", tick);
+  };
 };

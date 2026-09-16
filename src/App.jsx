@@ -9,6 +9,7 @@ import Scanner from "../src/components/Scanner";
 import {
   loadItems,
   saveItems,
+  startAutoSync,
 } from "./storage";
 
 const STORAGE_UPDATE_KEY = "macacoes_ultima_atualizacao";
@@ -145,6 +146,53 @@ export default function App() {
       ativo = false;
     };
   }, [items, loaded]);
+
+  /* =========================================================
+     SINCRONIZAÇÃO ENTRE DISPOSITIVOS
+
+     Sem isto, o app só olhava o servidor uma vez, ao abrir a
+     página. Se você alterasse algo no celular, o notebook (já
+     aberto) nunca ficava sabendo — e se você mexesse em algo
+     no notebook depois, ele reenviava a lista antiga dele por
+     cima, apagando a alteração feita no celular.
+
+     Agora o app verifica o servidor periodicamente (a cada 4s
+     e sempre que a aba volta a ficar visível/em foco) e
+     atualiza a tela quando encontra uma versão diferente.
+
+     A atualização automática é pausada enquanto o usuário está
+     com o formulário aberto, editando um item ou usando o
+     leitor de código — para não interromper o que ele está
+     fazendo no meio da digitação.
+  ========================================================= */
+
+  const estaEditandoRef = useRef(false);
+
+  useEffect(() => {
+    estaEditandoRef.current =
+      showForm || editingId !== null || scanning;
+  }, [showForm, editingId, scanning]);
+
+  useEffect(() => {
+    if (!loaded) return;
+
+    const pararSincronizacao = startAutoSync((novosItens) => {
+      if (estaEditandoRef.current) {
+        // Usuário está mexendo em algo agora — não interrompe.
+        return;
+      }
+
+      ignorarProximoAutosave.current = true;
+      setItems(novosItens);
+
+      const agora = new Date().toISOString();
+
+      localStorage.setItem(STORAGE_UPDATE_KEY, agora);
+      setUltimaAtualizacao(agora);
+    }, 4000);
+
+    return pararSincronizacao;
+  }, [loaded]);
 
   /* =========================================================
      DATAS
