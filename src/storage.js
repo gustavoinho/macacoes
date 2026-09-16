@@ -1,48 +1,19 @@
 /*
  * =========================================================
- * ENDEREÇO DO BACKEND (SENTINEL DATABASE)
+ * ENDEREÇO DO BACKEND
  * =========================================================
  *
- * O frontend está hospedado no Vercel. O backend (SQL) roda
- * no seu PC e é exposto para a internet por um túnel (ngrok,
- * cloudflared, localtunnel, etc). São dois domínios
- * DIFERENTES — por isso não dá pra usar um caminho relativo
- * como "/api/estoque": isso sempre aponta para o domínio do
- * próprio app no Vercel, que não tem essa rota.
- *
- * A URL do túnel muda toda vez que ele é reiniciado (a menos
- * que você use um domínio fixo, tipo Cloudflare Named Tunnel
- * ou um plano pago do ngrok). Por isso ela fica numa variável
- * de ambiente (VITE_API_URL), configurada no painel do Vercel
- * em Settings → Environment Variables — assim, quando o túnel
- * mudar de endereço, basta atualizar essa variável e fazer um
- * novo deploy, sem tocar no código.
- *
- * Exemplo de valor para VITE_API_URL:
- *   https://algo-aleatorio.trycloudflare.com
- *   (sem barra "/" no final)
+ * O navegador SEMPRE fala com o próprio domínio do Vercel.
+ * É o arquivo api/estoque.js (rodando no servidor do Vercel,
+ * não no navegador) quem repassa a requisição até o Sentinel
+ * Database no seu PC, usando as variáveis de ambiente
+ * SENTINEL_DATABASE_URL e SENTINEL_API_KEY — que ficam só do
+ * lado do servidor e nunca chegam ao navegador de quem usa o
+ * app.
  * =========================================================
  */
 
-const BASE_URL = (
-  typeof import.meta !== "undefined" &&
-  import.meta.env &&
-  import.meta.env.VITE_API_URL
-    ? import.meta.env.VITE_API_URL
-    : ""
-).replace(/\/$/, "");
-
-if (!BASE_URL) {
-  console.warn(
-    "[storage] VITE_API_URL não está definida. " +
-      "O app vai tentar '/api/estoque' no próprio domínio do Vercel, " +
-      "o que só funciona se o backend estiver publicado ali junto. " +
-      "Se o Sentinel Database roda no seu PC via túnel, configure " +
-      "VITE_API_URL nas variáveis de ambiente do Vercel com a URL pública do túnel."
-  );
-}
-
-const API_URL = `${BASE_URL}/api/estoque`;
+const API_URL = "/api/estoque";
 
 const LOCAL_KEY = "estoque_app_v1";
 const PENDING_KEY = "estoque_app_pending_sync";
